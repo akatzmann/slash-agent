@@ -19,7 +19,8 @@ def load_dotenv(env_path: str):
                     k, v = line.split("=", 1)
                     k = k.strip()
                     v = v.strip().strip("'\"")
-                    os.environ[k] = v
+                    if k not in os.environ:
+                        os.environ[k] = v
 
 # Load local .env config if present
 repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -99,7 +100,7 @@ async def main_async():
         
     # Retrieve model and endpoint configurations from environment variables
     endpoint = os.environ.get("AGENT_ENDPOINT", "http://127.0.0.1:11434")
-    model = os.environ.get("AGENT_MODEL", "gemma4:e2b-it-qat")
+    model = os.environ.get("AGENT_MODEL", "gemma4:e4b-it-qat")
     
     print(f"\033[1;30m[slash-agent] Initializing with model '{model}' at '{endpoint}'...\033[0m")
     

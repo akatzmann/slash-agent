@@ -36,7 +36,7 @@ $ npm run build
 ❌ ERROR: Build failed. Cannot find module 'dotenv' in server.js:12
 
 $ /agent Fix this
-[Agent Shell] Initializing with model 'qwen3.5-instruct' at 'http://127.0.0.1:11434'...
+[Agent Shell] Initializing with model 'gemma4:e4b-it-qat' at 'http://127.0.0.1:11434'...
 [Agent Started Task]
 Analyzing terminal context... Identified missing dependency 'dotenv' in server.js.
 
@@ -88,11 +88,11 @@ curl -fsSL https://raw.githubusercontent.com/akatzmann/slash-agent/master/bin/in
 You can customize the LLM backend endpoint, model, and history capture length using environment variables in your `~/.bashrc`:
 
 ```bash
-# LLM API Host Endpoint (Defaults to container host: http://host.containers.internal:11434)
-export AGENT_ENDPOINT="http://host.containers.internal:11434"
+# LLM API Host Endpoint (Defaults to local host: http://127.0.0.1:11434)
+export AGENT_ENDPOINT="http://127.0.0.1:11434"
 
-# Model name (Defaults to: frob/qwen3.5-instruct:latest)
-export AGENT_MODEL="frob/qwen3.5-instruct:latest"
+# Model name (Defaults to: gemma4:e4b-it-qat)
+export AGENT_MODEL="gemma4:e4b-it-qat"
 
 # Context extraction counts
 export AGENT_TMUX_LINES=50          # Lines captured from tmux scrollback

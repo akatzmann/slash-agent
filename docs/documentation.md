@@ -92,8 +92,8 @@ Confirm action: [y]es / [n]o / [e]dit / [c]omment ?
 
 ### Configuration Environment Variables
 Configure these variables in your shell or `~/.bashrc`:
-- `AGENT_ENDPOINT`: Host endpoint for the Ollama server (Defaults to `http://host.containers.internal:11434` or `http://127.0.0.1:11434`).
-- `AGENT_MODEL`: Model name used by the LLM backend (Defaults to `frob/qwen3.5-instruct:latest` or `gemma4:e2b-it-qat`).
+- `AGENT_ENDPOINT`: Host endpoint for the Ollama server (Defaults to `http://127.0.0.1:11434`).
+- `AGENT_MODEL`: Model name used by the LLM backend (Defaults to `gemma4:e4b-it-qat`).
 
 ---
 
