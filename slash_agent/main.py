@@ -2,9 +2,7 @@ import asyncio
 import argparse
 import sys
 import os
-from ollama import AsyncClient
 from py_agent_core.agent import Agent
-from py_agent_core.backends.ollama import OllamaBackend
 from slash_agent.tools import execute_command, request_user_input, session_state
 
 
@@ -101,16 +99,61 @@ async def main_async():
     else:
         full_prompt = user_prompt
         
-    # Retrieve model and endpoint configurations from environment variables
-    endpoint = os.environ.get("AGENT_ENDPOINT", "http://127.0.0.1:11434")
-    model = os.environ.get("AGENT_MODEL", "gemma4:e4b-it-qat")
-    
-    print(f"\033[1;30m[slash-agent] Initializing with model '{model}' at '{endpoint}'...\033[0m")
-    
+    # Retrieve model, endpoint, and backend configurations from environment variables
+    backend_type = os.environ.get("AGENT_BACKEND", "openai").lower()
+    endpoint = os.environ.get("AGENT_ENDPOINT", "")
+    model = os.environ.get("AGENT_MODEL", "")
+    api_key = os.environ.get("OPENAI_API_KEY", "")
+
+    print(f"\033[1;30m[slash-agent] Using backend '{backend_type}'...\033[0m")
+
     try:
-        backend = OllamaBackend(client=AsyncClient(host=endpoint), model=model)
+        if backend_type == "openai":
+            from openai import AsyncOpenAI
+            from py_agent_core.backends.openai import OpenAIBackend
+            resolved_model = model or "gpt-4o-mini"
+            client_kwargs = {}
+            if endpoint:
+                client_kwargs["base_url"] = endpoint
+            if api_key:
+                client_kwargs["api_key"] = api_key
+            client = AsyncOpenAI(**client_kwargs)
+            backend = OpenAIBackend(client=client, model=resolved_model)
+            print(f"\033[1;30m[slash-agent] Model '{resolved_model}' via OpenAI-compatible endpoint.\033[0m")
+
+        elif backend_type == "ollama":
+            from ollama import AsyncClient
+            from py_agent_core.backends.ollama import OllamaBackend
+            resolved_endpoint = endpoint or "http://127.0.0.1:11434"
+            resolved_model = model or "gemma4:e4b-it-qat"
+            backend = OllamaBackend(client=AsyncClient(host=resolved_endpoint), model=resolved_model)
+            print(f"\033[1;30m[slash-agent] Model '{resolved_model}' at '{resolved_endpoint}' via Ollama.\033[0m")
+
+        elif backend_type == "azure_openai":
+            from openai import AsyncAzureOpenAI
+            from py_agent_core.backends.azure_openai import AzureOpenAIBackend
+            azure_api_key = os.environ.get("AZURE_OPENAI_API_KEY", api_key)
+            azure_api_version = os.environ.get("AZURE_OPENAI_API_VERSION", "2024-02-15-preview")
+            resolved_model = model or "gpt-4o"
+            client = AsyncAzureOpenAI(
+                api_key=azure_api_key,
+                api_version=azure_api_version,
+                azure_endpoint=endpoint,
+            )
+            backend = AzureOpenAIBackend(client=client, model=resolved_model)
+            print(f"\033[1;30m[slash-agent] Model '{resolved_model}' via Azure OpenAI.\033[0m")
+
+        elif backend_type == "dummy":
+            from py_agent_core.backends.dummy import DummyBackend
+            backend = DummyBackend()
+            print(f"\033[1;30m[slash-agent] Running in offline dummy mode.\033[0m")
+
+        else:
+            print(f"\033[1;31m[Error] Unknown backend '{backend_type}'. Valid options: openai, ollama, azure_openai, dummy.\033[0m")
+            sys.exit(1)
+
     except Exception as e:
-        print(f"\033[1;31m[Error] Failed to initialize Ollama backend:\033[0m {e}")
+        print(f"\033[1;31m[Error] Failed to initialize backend '{backend_type}':\033[0m {e}")
         sys.exit(1)
         
     system_prompt = (

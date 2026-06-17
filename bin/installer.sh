@@ -83,13 +83,13 @@ else
         local prompt_msg="$1"
         local default_val="$2"
         local user_input
-        
+
         if [ -t 0 ] && [ -c /dev/tty ]; then
             read -rp "$prompt_msg" user_input < /dev/tty
         else
             read -rp "$prompt_msg" user_input
         fi
-        
+
         if [ -z "$user_input" ]; then
             echo "$default_val"
         else
@@ -97,7 +97,7 @@ else
         fi
     }
 
-    fetch_models() {
+    fetch_ollama_models() {
         local host="$1"
         python3 -c "
 import urllib.request, json, sys
@@ -110,90 +110,101 @@ except Exception:
 " 2>/dev/null
     }
 
-    # Use OLLAMA_HOST env var if pre-set, otherwise probe defaults
-    if [ -n "$OLLAMA_HOST" ]; then
-        echo "Using pre-configured OLLAMA_HOST=$OLLAMA_HOST."
-    else
+    echo ""
+    echo "Select LLM backend:"
+    echo "  [1] OpenAI (default) — gpt-4o-mini or any OpenAI-compatible endpoint"
+    echo "  [2] Ollama            — local or remote Ollama instance"
+    echo "  [3] Azure OpenAI      — Microsoft Azure OpenAI Service"
+    echo "  [4] Dummy             — offline mock (for testing)"
+    BACKEND_CHOICE=$(prompt_user "Backend [1-4, default: 1]: " "1")
+
+    AGENT_BACKEND=""
+    AGENT_ENDPOINT=""
+    AGENT_MODEL=""
+    OPENAI_API_KEY_VAL=""
+    AZURE_OPENAI_API_KEY_VAL=""
+    AZURE_OPENAI_API_VERSION_VAL=""
+
+    if [ "$BACKEND_CHOICE" = "1" ]; then
+        AGENT_BACKEND="openai"
+        AGENT_MODEL=$(prompt_user "Model name [default: gpt-4o-mini]: " "gpt-4o-mini")
+        AGENT_ENDPOINT=$(prompt_user "API endpoint base URL [press Enter to use default https://api.openai.com/v1]: " "")
+        OPENAI_API_KEY_VAL=$(prompt_user "OpenAI API key (leave blank to use OPENAI_API_KEY env var): " "")
+
+    elif [ "$BACKEND_CHOICE" = "2" ]; then
+        AGENT_BACKEND="ollama"
         echo "Probing local Ollama service at http://127.0.0.1:11434..."
         if curl -s -m 2 http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
-            OLLAMA_HOST="http://127.0.0.1:11434"
+            AGENT_ENDPOINT="http://127.0.0.1:11434"
             echo "Ollama detected at http://127.0.0.1:11434."
         else
             echo "Ollama was not found at http://127.0.0.1:11434."
-            CUSTOM_HOST=$(prompt_user "Enter your Ollama endpoint URL (or press Enter to skip): " "")
-            if [ -n "$CUSTOM_HOST" ]; then
-                echo "Probing $CUSTOM_HOST..."
-                if curl -s -m 3 "$CUSTOM_HOST/api/tags" >/dev/null 2>&1; then
-                    OLLAMA_HOST="$CUSTOM_HOST"
-                    echo "Ollama detected at $CUSTOM_HOST."
-                else
-                    echo "Warning: Could not reach Ollama at $CUSTOM_HOST. Proceeding with manual configuration."
-                    OLLAMA_HOST="$CUSTOM_HOST"
-                fi
-            fi
+            AGENT_ENDPOINT=$(prompt_user "Enter Ollama endpoint URL [default: http://127.0.0.1:11434]: " "http://127.0.0.1:11434")
         fi
-    fi
-
-    MODELS=()
-    if [ -n "$OLLAMA_HOST" ]; then
-        MODEL_LIST=$(fetch_models "$OLLAMA_HOST")
+        MODELS=()
+        MODEL_LIST=$(fetch_ollama_models "$AGENT_ENDPOINT")
         if [ -n "$MODEL_LIST" ]; then
             while IFS= read -r line; do
                 [ -n "$line" ] && MODELS+=("$line")
             done <<< "$MODEL_LIST"
         fi
-    fi
-
-    SELECTED_MODEL=""
-    if [ ${#MODELS[@]} -gt 0 ]; then
-        echo "Found the following models in your Ollama library:"
-
-        DEFAULT_INDEX=1
-        for i in "${!MODELS[@]}"; do
-            echo "  [$((i+1))] ${MODELS[$i]}"
-            if [ "${MODELS[$i]}" = "gemma4:e4b-it-qat" ]; then
-                DEFAULT_INDEX=$((i+1))
-            fi
-        done
-
-        CUSTOM_OPTION_INDEX=$((${#MODELS[@]} + 1))
-        echo "  [$CUSTOM_OPTION_INDEX] Enter a custom model name manually"
-
-        while true; do
-            choice=$(prompt_user "Select a model [1-$CUSTOM_OPTION_INDEX, default: $DEFAULT_INDEX]: " "$DEFAULT_INDEX")
-
-            if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "$CUSTOM_OPTION_INDEX" ]; then
-                if [ "$choice" -eq "$CUSTOM_OPTION_INDEX" ]; then
-                    SELECTED_MODEL=$(prompt_user "Enter model name: " "")
-                    if [ -z "$SELECTED_MODEL" ]; then
-                        echo "Model name cannot be empty."
-                        continue
+        if [ ${#MODELS[@]} -gt 0 ]; then
+            echo "Found the following models in your Ollama library:"
+            DEFAULT_INDEX=1
+            for i in "${!MODELS[@]}"; do
+                echo "  [$((i+1))] ${MODELS[$i]}"
+                if [ "${MODELS[$i]}" = "gemma4:e4b-it-qat" ]; then
+                    DEFAULT_INDEX=$((i+1))
+                fi
+            done
+            CUSTOM_OPTION_INDEX=$((${#MODELS[@]} + 1))
+            echo "  [$CUSTOM_OPTION_INDEX] Enter a custom model name manually"
+            while true; do
+                choice=$(prompt_user "Select a model [1-$CUSTOM_OPTION_INDEX, default: $DEFAULT_INDEX]: " "$DEFAULT_INDEX")
+                if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "$CUSTOM_OPTION_INDEX" ]; then
+                    if [ "$choice" -eq "$CUSTOM_OPTION_INDEX" ]; then
+                        AGENT_MODEL=$(prompt_user "Enter model name: " "")
+                        [ -z "$AGENT_MODEL" ] && echo "Model name cannot be empty." && continue
+                    else
+                        AGENT_MODEL="${MODELS[$((choice-1))]}"
                     fi
                     break
                 else
-                    SELECTED_MODEL="${MODELS[$((choice-1))]}"
-                    break
+                    echo "Invalid selection. Please try again."
                 fi
-            else
-                echo "Invalid selection. Please try again."
-            fi
-        done
-    else
-        echo "No models found or Ollama skipped. Using manual configuration."
-        if [ -z "$OLLAMA_HOST" ]; then
-            OLLAMA_HOST=$(prompt_user "Enter Ollama endpoint URL [default: http://127.0.0.1:11434]: " "http://127.0.0.1:11434")
+            done
+        else
+            AGENT_MODEL=$(prompt_user "Enter Ollama model name [default: gemma4:e4b-it-qat]: " "gemma4:e4b-it-qat")
         fi
-        SELECTED_MODEL=$(prompt_user "Enter model name to use [default: gemma4:e4b-it-qat]: " "gemma4:e4b-it-qat")
+
+    elif [ "$BACKEND_CHOICE" = "3" ]; then
+        AGENT_BACKEND="azure_openai"
+        AGENT_ENDPOINT=$(prompt_user "Azure OpenAI endpoint URL: " "")
+        AGENT_MODEL=$(prompt_user "Deployment/model name [default: gpt-4o]: " "gpt-4o")
+        AZURE_OPENAI_API_KEY_VAL=$(prompt_user "Azure OpenAI API key: " "")
+        AZURE_OPENAI_API_VERSION_VAL=$(prompt_user "API version [default: 2024-02-15-preview]: " "2024-02-15-preview")
+
+    elif [ "$BACKEND_CHOICE" = "4" ]; then
+        AGENT_BACKEND="dummy"
+        echo "Dummy backend selected. No configuration needed."
+
+    else
+        echo "Invalid choice. Defaulting to OpenAI backend."
+        AGENT_BACKEND="openai"
+        AGENT_MODEL="gpt-4o-mini"
     fi
 
     echo "Saving configuration to $INSTALL_DIR/.env..."
-    cat <<EOF > "$INSTALL_DIR/.env"
-AGENT_ENDPOINT="$OLLAMA_HOST"
-AGENT_MODEL="$SELECTED_MODEL"
-EOF
+    {
+        echo "AGENT_BACKEND=\"$AGENT_BACKEND\""
+        [ -n "$AGENT_ENDPOINT" ] && echo "AGENT_ENDPOINT=\"$AGENT_ENDPOINT\""
+        [ -n "$AGENT_MODEL" ] && echo "AGENT_MODEL=\"$AGENT_MODEL\""
+        [ -n "$OPENAI_API_KEY_VAL" ] && echo "OPENAI_API_KEY=\"$OPENAI_API_KEY_VAL\""
+        [ -n "$AZURE_OPENAI_API_KEY_VAL" ] && echo "AZURE_OPENAI_API_KEY=\"$AZURE_OPENAI_API_KEY_VAL\""
+        [ -n "$AZURE_OPENAI_API_VERSION_VAL" ] && echo "AZURE_OPENAI_API_VERSION=\"$AZURE_OPENAI_API_VERSION_VAL\""
+    } > "$INSTALL_DIR/.env"
     echo "Configuration saved successfully."
 fi
-
 # 5. Idempotent Shell Profile Registration
 SHELL_RC="$HOME/.bashrc"
 SOURCE_LINE="source $INSTALL_DIR/bin/slash-agent.sh"
