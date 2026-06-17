@@ -57,13 +57,15 @@ async def main_async():
     parser.add_argument("--context-file", type=str, help="File containing captured terminal history/context")
     parser.add_argument("--sync-file", type=str, help="Temp file to write environment sync commands for parent shell")
     parser.add_argument("-y", "--yes", action="store_true", help="Auto-confirm all commands")
+    parser.add_argument("--unsafe-yes", action="store_true", help="Auto-confirm even critical/dangerous commands")
     parser.add_argument("-n", "--dry-run", action="store_true", help="Dry run simulation mode")
     parser.add_argument("prompt", nargs="*", help="The user prompt or task")
     
     args = parser.parse_args()
     
     # Configure session flags
-    session_state.auto_confirm = args.yes
+    session_state.auto_confirm = args.yes or args.unsafe_yes
+    session_state.unsafe_confirm = args.unsafe_yes
     session_state.dry_run = args.dry_run
     
     # Read captured context
@@ -121,7 +123,8 @@ async def main_async():
         "3. Always check exit codes and stderr of your commands. If a command fails, debug it, explore the directories, read the files, and try an alternative approach.\n"
         "4. Your working directory and env variables are preserved statefully between tool executions.\n"
         "5. When you have finished the task, output a concise explanation detailing what you did and the outcomes.\n"
-        "6. If the task is unclear or ambiguous, you MUST use the `request_user_input` tool to prompt the user for clarification. Do NOT use it to ask for permission to run commands or confirm individual steps, as the parent shell's prompt automatically prompts the user to confirm all proposed command executions."
+        "6. If the task is unclear or ambiguous, you MUST use the `request_user_input` tool to prompt the user for clarification. Do NOT use it to ask for permission to run commands or confirm individual steps, as the parent shell's prompt automatically prompts the user to confirm all proposed command executions.\n"
+        "7. For every command execution, you MUST specify `risk_level` (either 'safe', 'low', 'moderate', or 'critical'). For 'moderate' and 'critical' risk levels, you MUST also provide a `risk_description` explaining the risk. For 'safe' and 'low' risk levels, `risk_description` is optional and should be left empty unless there is a specific caution."
     )
     
     agent = Agent(

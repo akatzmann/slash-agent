@@ -121,9 +121,15 @@ Simulate proposed steps and check the agent's plan without making actual system 
 ```
 
 ### 4. Auto-confirm Mode
-Run tasks without any confirmation prompts:
+Run tasks without any confirmation prompts for safe, low, or moderate risk commands:
 ```bash
 /agent -y update package lists and install tree
+```
+
+### 5. Auto-confirm Critical Commands
+By default, critical commands (like `rm -rf` or commands using `sudo`) are not auto-confirmed by `-y` to prevent accidental damage. To auto-confirm even critical commands, pass the `--unsafe-yes` flag:
+```bash
+/agent --unsafe-yes clean up docker volumes and system cache
 ```
 
 ---

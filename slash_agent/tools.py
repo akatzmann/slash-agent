@@ -22,6 +22,7 @@ class ShellState:
         self.env_vars = os.environ.copy()
         self.dry_run = False
         self.auto_confirm = False
+        self.unsafe_confirm = False
 
 # Global session state singleton
 session_state = ShellState()
@@ -53,7 +54,7 @@ def read_char_raw() -> str:
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
     return ch
 
-def prompt_user_confirmation(command: str) -> Tuple[str, str]:
+def prompt_user_confirmation(command: str, risk_level: str = "low", risk_description: str = "") -> Tuple[str, str]:
     """Prompts the user to confirm, edit, or comment on a proposed command.
     
     Returns:
@@ -61,7 +62,28 @@ def prompt_user_confirmation(command: str) -> Tuple[str, str]:
     """
     print(f"\n\033[1;33m[Agent] Proposed Command:\033[0m")
     print(f"  $ {command}\n")
-    print("\033[1;36mConfirm action: [y]es / [n]o / [e]dit / [c]omment ? \033[0m", end="", flush=True)
+    
+    # ANSI color mapping for risk levels
+    risk_colors = {
+        "safe": "\033[1;32m",       # Bold Green
+        "low": "\033[1;36m",        # Bold Cyan
+        "moderate": "\033[1;33m",   # Bold Yellow
+        "critical": "\033[1;31m",   # Bold Red
+    }
+    
+    level = risk_level.lower().strip()
+    if level not in risk_colors:
+        level = "low"
+    color = risk_colors[level]
+    
+    print(f"{color}[Risk: {level.capitalize()}]\033[0m", end="")
+    if risk_description:
+        print(f" {risk_description}")
+    else:
+        print()
+    print()
+    
+    print("\033[1;36mConfirm action: [y]es / [n]o / [e]edit / [c]omment ? \033[0m", end="", flush=True)
     
     while True:
         ch = read_char_raw().lower()
@@ -262,23 +284,48 @@ def parse_pty_result(command_output: bytes, state_buffer: bytes = b"") -> Tuple[
     return exit_code, cleaned_output
 
 @tool
-async def execute_command(command: str) -> str:
+async def execute_command(command: str, risk_level: str = "low", risk_description: str = "") -> str:
     """Executes a shell command on the user's system, preserving directory context.
     
     Args:
         command: The command line string to run in bash (e.g. 'npm run build').
+        risk_level: The security risk level of the command. MUST be one of: 'safe', 'low', 'moderate', 'critical'.
+        risk_description: A brief reason why the command is classified under this risk level.
     """
+    # Normalize risk level and description
+    level = risk_level.lower().strip()
+    desc = risk_description.strip()
+    
+    # Python-level Safety Guardrail overrides for dangerous commands
+    cmd_lower = command.lower()
+    critical_patterns = ["rm -rf", "sudo ", "mkfs", "dd ", "chmod -r", "chown -r", "/dev/sd"]
+    if any(pat in cmd_lower for pat in critical_patterns):
+        level = "critical"
+        desc = "Command contains administrative or destructive file-system operations (e.g., rm, sudo, chown)."
+    
+    # Elevate risk to moderate for script executions/other shells if not already higher
+    script_patterns = ["./", "sh ", "bash ", "python ", "make ", "npx ", "npm run "]
+    if level in ("safe", "low") and any(pat in cmd_lower for pat in script_patterns):
+        level = "moderate"
+        desc = "Command executes a local script, runner, or makefile."
+        
     if session_state.dry_run:
         print(f"\n\033[1;34m[Dry-run] Would execute:\033[0m {command}")
         return f"Command execution simulated. Result: Exit code 0, Output: (Dry-run simulated)"
         
-    if session_state.auto_confirm:
+    # Check if we can auto-confirm
+    can_auto_confirm = session_state.auto_confirm
+    if level == "critical" and not session_state.unsafe_confirm:
+        # Standard auto-confirm does not bypass critical prompts
+        can_auto_confirm = False
+        
+    if can_auto_confirm:
         print(f"\n\033[1;32m[Agent Running]:\033[0m {command}")
         exit_code, output = run_command_in_pty(command)
         return f"Exit code: {exit_code}\nOutput:\n{output}"
         
     # Prompt the user for confirmation
-    action, cmd_to_run = prompt_user_confirmation(command)
+    action, cmd_to_run = prompt_user_confirmation(command, risk_level=level, risk_description=desc)
     
     if action == "no":
         return "Command rejected by user: User refused execution."

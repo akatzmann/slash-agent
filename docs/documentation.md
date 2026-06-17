@@ -87,8 +87,16 @@ Confirm action: [y]es / [n]o / [e]dit / [c]omment ?
 - **`c` (comment):** Allows the user to provide text feedback (e.g., *"No, use node 18"*), which is sent back to the LLM agent to guide its next steps.
 
 ### Command-line Parameters
-- **`-y`, `--yes` (Auto-confirm):** Skips the confirmation prompt and executes all commands automatically.
+- **`-y`, `--yes` (Auto-confirm):** Skips the confirmation prompt and executes commands automatically. Note: This will **not** auto-confirm commands flagged with a `critical` risk level (e.g. `rm -rf`, `sudo`).
+- **`--unsafe-yes` (Unsafe Auto-confirm):** Auto-confirms all commands, bypassing prompts even for `critical` risk operations.
 - **`-n`, `--dry-run` (Simulation):** Simulates a successful execution (Exit code 0, mock output) without making changes to the system.
+
+### Command Safety Risk Levels
+Before prompting the user (or deciding to auto-confirm), the system evaluates the safety category of every proposed command:
+- **`Safe`** (Green): Informational actions (e.g. `git status`, `pwd`). `risk_description` is optional.
+- **`Low`** (Cyan): Safe configuration changes (e.g. `git add`, `python -m venv`). `risk_description` is optional.
+- **`Moderate`** (Yellow): Changes to files or setup state (e.g. `git commit`, `npm install`). Requires a `risk_description` explaining potential risks.
+- **`Critical`** (Red): Destructive file operations, administrative commands, or remote scripts (e.g. `rm -rf`, `sudo`). Requires a `risk_description` and always forces manual confirmation unless overridden by `--unsafe-yes`.
 
 ### Configuration Environment Variables
 Configure these variables in your shell or `~/.bashrc`:
