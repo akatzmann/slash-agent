@@ -1,6 +1,7 @@
 import os
 import sys
 import re
+import asyncio
 import select
 import pty
 import termios
@@ -292,3 +293,22 @@ async def execute_command(command: str) -> str:
         
     exit_code, output = run_command_in_pty(cmd_to_run)
     return f"Exit code: {exit_code}\nOutput:\n{output}"
+
+@tool
+async def request_user_input(prompt: str) -> str:
+    """Prompts the user directly in the terminal to ask a clarifying question or request input.
+    
+    Args:
+        prompt: The question or request prompt to show the user (e.g. 'What is the target branch?').
+    """
+    print(f"\n\033[1;36m[Agent Question] {prompt}\033[0m")
+    loop = asyncio.get_event_loop()
+    try:
+        # Run the synchronous input() in a separate executor thread to prevent blocking the asyncio loop.
+        response = await loop.run_in_executor(None, lambda: input("\033[1;32m> \033[0m").strip())
+        return response
+    except (KeyboardInterrupt, EOFError):
+        print("\n\033[1;31m[Agent Question Aborted]\033[0m")
+        # Propagate KeyboardInterrupt to cleanly abort agent execution
+        raise KeyboardInterrupt
+

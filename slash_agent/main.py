@@ -5,7 +5,8 @@ import os
 from ollama import AsyncClient
 from py_agent_core.agent import Agent
 from py_agent_core.backends.ollama import OllamaBackend
-from slash_agent.tools import execute_command, session_state
+from slash_agent.tools import execute_command, request_user_input, session_state
+
 
 def load_dotenv(env_path: str):
     """Manually parse .env file to load variables into os.environ."""
@@ -119,14 +120,15 @@ async def main_async():
         "2. Do not attempt commands that are endless unless they have a timeout (e.g. do not run `tail -f` or raw `ping` without counts).\n"
         "3. Always check exit codes and stderr of your commands. If a command fails, debug it, explore the directories, read the files, and try an alternative approach.\n"
         "4. Your working directory and env variables are preserved statefully between tool executions.\n"
-        "5. When you have finished the task, output a concise explanation detailing what you did and the outcomes."
+        "5. When you have finished the task, output a concise explanation detailing what you did and the outcomes.\n"
+        "6. If the task is unclear or ambiguous, you MUST use the `request_user_input` tool to prompt the user for clarification. Do NOT use it to ask for permission to run commands or confirm individual steps, as the parent shell's prompt automatically prompts the user to confirm all proposed command executions."
     )
     
     agent = Agent(
         backend=backend,
         initial_state={
             "systemPrompt": system_prompt,
-            "tools": [execute_command]
+            "tools": [execute_command, request_user_input]
         }
     )
     

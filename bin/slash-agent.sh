@@ -48,4 +48,8 @@ function /agent {
 }
 
 echo -e "\033[1;32m[slash-agent] Native integration active. Type '/agent <task>' to use.\033[0m"
+if [ -z "$TMUX" ]; then
+    echo -e "\033[2;33m[slash-agent] Tip: Running inside tmux gives /agent richer context (live screen capture).\033[0m"
+    echo -e "\033[2;33m               Start a session with: tmux\033[0m"
+fi
 
