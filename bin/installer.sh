@@ -84,7 +84,7 @@ else
         local default_val="$2"
         local user_input
 
-        if [ -t 0 ] && [ -c /dev/tty ]; then
+        if [ -c /dev/tty ]; then
             read -rp "$prompt_msg" user_input < /dev/tty
         else
             read -rp "$prompt_msg" user_input
