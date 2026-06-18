@@ -13,6 +13,19 @@
 
 ---
 
+## ⚡ Quick Start (5-Second Install)
+
+Get up and running instantly. Run the quick installer script in your Bash shell:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/akatzmann/slash-agent/master/bin/installer.sh | bash
+```
+
+*(This automatically clones the repo to `~/.slash-agent`, configures a Python virtual environment, installs requirements, and registers the `/agent` command helper wrapper in your `~/.bashrc`.)*
+
+---
+
+
 ## 🌟 Key Features
 
 * **🤖 LLM Agnostic & Privacy First:** Supports local offline models (like Ollama) with zero keys required and zero data leaving your machine, as well as OpenAI and Azure OpenAI.
@@ -85,17 +98,9 @@ graph TD
 
 ---
 
-## 🚀 Installation
+## 🔧 Manual Installation
 
-### Method 1: Single-Command Quick Installer (Recommended)
-
-Get up and running in seconds. Stream the installer directly to your shell:
-```bash
-curl -fsSL https://raw.githubusercontent.com/akatzmann/slash-agent/master/bin/installer.sh | bash
-```
-*(This automatically clones the repo to `~/.slash-agent`, configures a Python virtual environment, installs Python packages, and registers the shell helper in your `~/.bashrc`.)*
-
-### Method 2: Manual Installation
+If you prefer to set up the agent manually instead of using the Quick Start script:
 
 1. **Clone the Repository:**
    ```bash
