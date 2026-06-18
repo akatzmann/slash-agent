@@ -85,19 +85,27 @@ curl -fsSL https://raw.githubusercontent.com/akatzmann/slash-agent/master/bin/in
 
 ## ⚙️ Configuration
 
-You can customize the LLM backend endpoint, model, and history capture length using environment variables in your `~/.bashrc`:
+Configure the LLM backend, endpoint, model, and capture settings in your `.env` file or shell profile:
 
 ```bash
-# LLM API Host Endpoint (Defaults to local host: http://127.0.0.1:11434)
-export AGENT_ENDPOINT="http://127.0.0.1:11434"
+# LLM Backend: openai (default), ollama, azure_openai, dummy
+export AGENT_BACKEND="openai"
 
-# Model name (Defaults to: gemma4:e4b-it-qat)
-export AGENT_MODEL="gemma4:e4b-it-qat"
+# Model name (Defaults: gpt-4o-mini for openai, gemma4:e4b-it-qat for ollama)
+export AGENT_MODEL="gpt-4o-mini"
 
-# Context extraction counts
-export AGENT_TMUX_LINES=50          # Lines captured from tmux scrollback
-export AGENT_HISTORY_COMMANDS=20    # Number of commands captured from history fallback
+# API endpoint base URL (defaults to official OpenAI API endpoint)
+export AGENT_ENDPOINT=""
+
+# OpenAI API Key (required for default OpenAI backend)
+export OPENAI_API_KEY="your-api-key-here"
+
+# Context extraction settings
+export AGENT_TMUX_LINES=50          # Lines captured from active tmux scrollback
+export AGENT_HISTORY_COMMANDS=20    # Commands captured from history fallback
 ```
+
+For a full list of configuration variables (e.g., Azure OpenAI variables), see the [.env.template](.env.template) file.
 
 ---
 

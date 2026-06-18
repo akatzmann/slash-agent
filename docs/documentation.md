@@ -15,7 +15,7 @@ The integration consists of three primary components working in sequence:
 [ Bash Sourcing Wrapper (bin/slash-agent.sh) ] ──► Captures Terminal Screen (tmux pane or history)
         │
         ▼ (Launches python controller with context)
-[ Python Orchestrator (slash_agent/main.py) ] ──► Interfaces with Ollama Backend (Agent client loop)
+[ Python Orchestrator (slash_agent/main.py) ] ──► Interfaces with Configured Backend (Agent client loop)
         │
         ▼ (For each tool execution)
 [ PTY Bridge (slash_agent/tools.py) ] ──────────► Executes subprocess command in interactive PTY
@@ -30,7 +30,7 @@ The integration consists of three primary components working in sequence:
 ### Execution Lifecycle:
 1. **Sourcing Hooks:** Sourcing `bin/slash-agent.sh` injects the `/agent` command function into the current active Bash environment.
 2. **Context Collection:** The wrapper gathers active terminal outputs and invokes the Python orchestrator, passing paths to temporary files for context and state synchronization.
-3. **Agent Loop & Client Initialization:** The Python entrypoint `slash_agent/main.py` parses arguments, configures environment settings, sets up the LLM agent client, and starts the task stream with Ollama.
+3. **Agent Loop & Client Initialization:** The Python entrypoint `slash_agent/main.py` parses arguments, configures environment settings, sets up the LLM agent client, and starts the task stream with the configured LLM backend (OpenAI, Ollama, Azure OpenAI, or Dummy).
 4. **Interactive Command Execution:** When the agent decides to execute a shell command, it invokes the PTY execution bridge which requests user permission and streams input/output in raw mode.
 5. **Parent Shell Updates:** After execution finishes, env variables and working directory transitions are written out as Bash statements to a temp sync file. The wrapper sources this file on termination, applying the changes directly to the host shell session.
 
@@ -99,9 +99,15 @@ Before prompting the user (or deciding to auto-confirm), the system evaluates th
 - **`Critical`** (Red): Destructive file operations, administrative commands, or remote scripts (e.g. `rm -rf`, `sudo`). Requires a `risk_description` and always forces manual confirmation unless overridden by `--unsafe-yes`.
 
 ### Configuration Environment Variables
-Configure these variables in your shell or `~/.bashrc`:
-- `AGENT_ENDPOINT`: Host endpoint for the Ollama server (Defaults to `http://127.0.0.1:11434`).
-- `AGENT_MODEL`: Model name used by the LLM backend (Defaults to `gemma4:e4b-it-qat`).
+Configure these variables in your `.env` file, shell profile, or `~/.bashrc`:
+- `AGENT_BACKEND`: LLM backend engine. Supported options: `openai` (default), `ollama`, `azure_openai`, `dummy`.
+- `AGENT_MODEL`: Model name used by the LLM backend. Defaults to `gpt-4o-mini` for `openai`, `gemma4:e4b-it-qat` for `ollama`, and `gpt-4o` for `azure_openai`.
+- `AGENT_ENDPOINT`: Host base URL endpoint. Defaults: official OpenAI API endpoint for `openai`, `http://127.0.0.1:11434` for `ollama`.
+- `OPENAI_API_KEY`: API key for the default `openai` backend.
+- `AZURE_OPENAI_API_KEY`: API key for the `azure_openai` backend.
+- `AZURE_OPENAI_API_VERSION`: API version for the `azure_openai` backend (defaults to `2024-02-15-preview`).
+- `AGENT_TMUX_LINES`: Lines captured from tmux scrollback (defaults to `50`).
+- `AGENT_HISTORY_COMMANDS`: Number of commands captured from history fallback (defaults to `20`).
 
 ---
 

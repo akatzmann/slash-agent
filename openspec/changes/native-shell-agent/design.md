@@ -1,6 +1,6 @@
 ## Context
 
-The workspace `/notebooks/2026-06-16_AgentShell` is currently empty. We want to implement a native shell agent addon. We will leverage the existing `py_agent_core` orchestrator package located under `/notebooks/2026-05-28_PyAgentCore/` by adding its directory to `PYTHONPATH` and executing our script using the virtualenv Python binary at `/notebooks/2026-05-28_PyAgentCore/.venv/bin/python3`.
+The workspace directory is currently empty. We want to implement a native shell agent addon. We will leverage the `py_agent_core` orchestrator package (e.g. from git or local package path) and execute our script using the virtualenv Python binary.
 
 ## Goals / Non-Goals
 
@@ -38,7 +38,7 @@ The workspace `/notebooks/2026-06-16_AgentShell` is currently empty. We want to 
 - **Alternatives considered:** Direct execution with pipe redirection (breaks interactive commands); piping password via stdin using `sudo -S` (unsafe, security hazard, and only works for sudo).
 
 ### Decision 3: Directory and Env synchronization using a sync file
-- **Design choice:** The parent Bash function `/agent` creates a temporary file (`mktemp`) and passes its path to Python via `--sync-file`. When the Python agent finishes, it writes bash synchronization commands (e.g. `cd "/notebooks/folder"`) to this file. The parent Bash function sources this file on exit and deletes it.
+- **Design choice:** The parent Bash function `/agent` creates a temporary file (`mktemp`) and passes its path to Python via `--sync-file`. When the Python agent finishes, it writes bash synchronization commands (e.g. `cd "/path/to/folder"`) to this file. The parent Bash function sources this file on exit and deletes it.
 - **Rationale:** A child process cannot modify its parent process's environment. Sourcing a temporary command file is a clean, standard Unix mechanism.
 - **Alternatives considered:** Printing synchronization commands to stdout (would pollute the console and interfere with user-facing messages).
 

@@ -52,8 +52,8 @@ The system SHALL execute the approved commands inside a pseudo-terminal (PTY) br
 The system SHALL track changes to the current working directory (PWD) and environment variables during agent execution, and SHALL synchronize those changes back to the parent shell session when the agent exits.
 
 #### Scenario: Navigating directories during agent execution
-- **WHEN** the agent runs a command that changes PWD to `/notebooks/new_folder`
-- **THEN** on agent exit, the parent shell SHALL execute `cd /notebooks/new_folder` to synchronize the directory.
+- **WHEN** the agent runs a command that changes PWD to `/path/to/new_folder`
+- **THEN** on agent exit, the parent shell SHALL execute `cd /path/to/new_folder` to synchronize the directory.
 
 ---
 

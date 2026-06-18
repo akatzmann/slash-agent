@@ -73,11 +73,50 @@ fi
 
 echo "Installing Python dependencies..."
 .venv/bin/pip install --upgrade pip
+if [ "$UPDATE_MODE" = true ]; then
+    echo "Bypassing pip git cache for py-agent-core..."
+    .venv/bin/pip uninstall -y py-agent-core || true
+fi
 .venv/bin/pip install -r requirements.txt || { echo "Error: Failed to install Python dependencies."; exit 1; }
 
 # 4. Interactive LLM Backend Configuration
 if [ -f "$INSTALL_DIR/.env" ]; then
-    echo "Configuration file $INSTALL_DIR/.env already exists. Preserving existing configuration."
+    echo "Configuration file $INSTALL_DIR/.env already exists. Ensuring all backend variables are configured..."
+    
+    # Helper to check/append keys
+    amend_env_val() {
+        local key="$1"
+        local val="$2"
+        if ! grep -q "^$key=" "$INSTALL_DIR/.env"; then
+            echo "$key=\"$val\"" >> "$INSTALL_DIR/.env"
+            echo "  Added missing configuration: $key=\"$val\""
+        fi
+    }
+    
+    # Infer backend if AGENT_BACKEND is missing
+    if ! grep -q "^AGENT_BACKEND=" "$INSTALL_DIR/.env"; then
+        existing_endpoint=""
+        existing_endpoint=$(grep "^AGENT_ENDPOINT=" "$INSTALL_DIR/.env" | cut -d'=' -f2- | tr -d '"'\' || true)
+        if [[ "$existing_endpoint" == *":11434"* ]]; then
+            echo "Inferred legacy Ollama backend from existing endpoint."
+            amend_env_val "AGENT_BACKEND" "ollama"
+        else
+            echo "Defaulting to OpenAI backend."
+            amend_env_val "AGENT_BACKEND" "openai"
+        fi
+    fi
+    
+    # Ensure placeholder keys for API key variables are appended if missing
+    for key in OPENAI_API_KEY AZURE_OPENAI_API_KEY AZURE_OPENAI_API_VERSION; do
+        if ! grep -q "$key" "$INSTALL_DIR/.env"; then
+            if [ "$key" = "AZURE_OPENAI_API_VERSION" ]; then
+                echo "# AZURE_OPENAI_API_VERSION=\"2024-02-15-preview\"" >> "$INSTALL_DIR/.env"
+            else
+                echo "# $key=\"\"" >> "$INSTALL_DIR/.env"
+            fi
+        fi
+    done
+    echo "Configuration verification complete."
 else
     prompt_user() {
         local prompt_msg="$1"
@@ -127,7 +166,41 @@ except Exception:
 
     if [ "$BACKEND_CHOICE" = "1" ]; then
         AGENT_BACKEND="openai"
-        AGENT_MODEL=$(prompt_user "Model name [default: gpt-4o-mini]: " "gpt-4o-mini")
+        
+        echo ""
+        echo "Select OpenAI model:"
+        echo "  [1] gpt-4o-mini (default)"
+        echo "  [2] gpt-4o"
+        echo "  [3] o1-mini"
+        echo "  [4] o1-preview"
+        echo "  [5] Enter a custom model name manually"
+        
+        while true; do
+            OPENAI_MODEL_CHOICE=$(prompt_user "Select a model [1-5, default: 1]: " "1")
+            if [ "$OPENAI_MODEL_CHOICE" = "1" ]; then
+                AGENT_MODEL="gpt-4o-mini"
+                break
+            elif [ "$OPENAI_MODEL_CHOICE" = "2" ]; then
+                AGENT_MODEL="gpt-4o"
+                break
+            elif [ "$OPENAI_MODEL_CHOICE" = "3" ]; then
+                AGENT_MODEL="o1-mini"
+                break
+            elif [ "$OPENAI_MODEL_CHOICE" = "4" ]; then
+                AGENT_MODEL="o1-preview"
+                break
+            elif [ "$OPENAI_MODEL_CHOICE" = "5" ]; then
+                AGENT_MODEL=$(prompt_user "Enter model name: " "")
+                if [ -n "$AGENT_MODEL" ]; then
+                    break
+                else
+                    echo "Model name cannot be empty."
+                fi
+            else
+                echo "Invalid selection. Please try again."
+            fi
+        done
+        
         AGENT_ENDPOINT=$(prompt_user "API endpoint base URL [press Enter to use default https://api.openai.com/v1]: " "")
         OPENAI_API_KEY_VAL=$(prompt_user "OpenAI API key (leave blank to use OPENAI_API_KEY env var): " "")
 

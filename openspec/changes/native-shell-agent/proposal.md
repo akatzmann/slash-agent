@@ -21,7 +21,7 @@ Developers frequently need quick assistance or automation directly inside their 
 
 ## Impact
 
-- Adds new Python package `agent_shell` in `/notebooks/2026-06-16_AgentShell/agent_shell/`.
-- Adds `bin/agent-shell.sh` script to be sourced.
+- Adds new Python package `slash_agent` in `slash_agent/` directory.
+- Adds `bin/slash-agent.sh` script to be sourced.
 - Does not modify any existing codebase files (clean addon).
-- Requires PYTHONPATH to point to `/notebooks/2026-05-28_PyAgentCore/` and run using its virtualenv Python interpreter.
+- Requires the orchestrator package `py-agent-core` to be installed (e.g. from GitHub) in the virtualenv Python environment.
