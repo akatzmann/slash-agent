@@ -5,6 +5,8 @@
 [![Shell: Bash](https://img.shields.io/badge/Shell-Bash-green.svg)](https://www.gnu.org/software/bash/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-orange.svg)](http://makeapullrequest.com)
 
+![slash-agent in action](docs/hero.gif)
+
 **slash-agent** is an ultra-lightweight, zero-overhead AI coding partner that integrates natively into your active Bash shell. It is designed to act as a seamless extension of your command line, keeping you focused in your terminal with **100% local, private LLM support** (via Ollama) or cloud powerhouses (OpenAI/Azure OpenAI).
 
 > [!IMPORTANT]
