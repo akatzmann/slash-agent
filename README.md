@@ -5,16 +5,17 @@
 [![Shell: Bash](https://img.shields.io/badge/Shell-Bash-green.svg)](https://www.gnu.org/software/bash/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-orange.svg)](http://makeapullrequest.com)
 
-**slash-agent** is an ultra-lightweight, zero-overhead AI coding partner that integrates natively into your active Bash shell.
+**slash-agent** is an ultra-lightweight, zero-overhead AI coding partner that integrates natively into your active Bash shell. It is designed to act as a seamless extension of your command line, keeping you focused in your terminal with **100% local, private LLM support** (via Ollama) or cloud powerhouses (OpenAI/Azure OpenAI).
 
 > [!IMPORTANT]
-> **No Daemons. Zero Idle Memory. 100% On-Demand.**
-> slash-agent consumes **zero CPU and zero RAM** when you aren't using it. It remains completely inactive until you call `/agent`. It then instantly captures your terminal state (active tmux scrollback or command history fallback) to diagnose compiler failures, write files, and execute fixes—automatically syncing directories (`cd`) and environment exports back to your parent shell session.
+> **A Natural Coding Partner in Your Shell—Zero Workflow Interruption.**
+> slash-agent operates directly inside your active Bash session. It stays completely out of your way and consumes **zero background resources** (no running daemons, no background processes) when not in use. Simply type `/agent` when you hit a blocker: it instantly grabs your recent terminal context (tmux pane scrollback or command history) to diagnose errors, edit files, and execute commands—automatically syncing directory changes (`cd`) and environment exports back to your parent shell session when it exits.
 
 ---
 
-
 ## 🌟 Key Features
+
+* **🤖 LLM Agnostic & Privacy First:** Supports local offline models (like Ollama) with zero keys required and zero data leaving your machine, as well as OpenAI and Azure OpenAI.
 
 * **🔌 Zero-Overhead Integration:** Completely passive. Consumes zero CPU/memory until you run `/agent`—no running background daemons, cron jobs, or log listeners.
 * **🔍 Context-Aware Diagnoses:** Instantly extracts the last 50 lines of your active `tmux` pane or terminal history, letting the LLM read error outputs and tracebacks without manual copy-pasting.
@@ -51,6 +52,36 @@ added 1 package, and audited 120 packages in 1s
 
 I have installed the missing 'dotenv' package and verified that the build now passes.
 ```
+
+---
+
+## 🎯 Common Use Cases
+
+* 🛠️ **Build & Test Crashes:** When a compiler error, script traceback, or unit test fails, simply run `/agent` to let it read the error logs directly and propose a fix.
+* 📦 **Dependency Resolution:** Missing package imports? The agent reads the import error, installs the package, and verifies the build.
+* 💻 **Quick Scripting & Automation:** Ask the agent to generate helper scripts, configure development environments, or perform regex logs processing on the fly.
+* ⚙️ **System Configuration:** Easily set up local databases, systemd services, or configuration files without looking up command flags.
+
+---
+
+## 🔍 How it Works
+
+Unlike standard agents that run in isolated subshells (and cannot modify your current directory or environment), **slash-agent** uses a lightweight state synchronization protocol:
+
+```mermaid
+graph TD
+  A[Active Bash Session] -->|1. Type /agent| B(Bash Sourcing Wrapper bin/slash-agent.sh)
+  B -->|2. Capture Screen Output| C(Python Orchestrator slash_agent/main.py)
+  C -->|3. Interface with local/cloud LLM| C
+  C -->|4. Propose commands| D(PTY Execution Bridge)
+  D -->|5. Interactive Steering Loop| A
+  D -->|6. Capture exit code, PWD, env updates| B
+  B -->|7. Source sync file on exit| A
+```
+
+1. **Context Capture:** The shell wrapper automatically captures the active `tmux` pane buffer (or history) to give the LLM immediate context.
+2. **Interactive PTY Bridge:** Commands run inside a real pseudo-terminal (PTY) so you see colored outputs, progress bars, and can interact with prompts (like typing passwords for `sudo`).
+3. **Parent Shell Sync:** Directory changes (`cd`) or environment variables (`export`) are safely passed back to your main shell session via a temporary sourcing script on exit.
 
 ---
 
