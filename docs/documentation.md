@@ -6,33 +6,35 @@ This document describes the design, architecture, internal communication protoco
 
 ## 1. System Architecture & Lifecycle
 
-The integration consists of three primary components working in sequence:
+The integration consists of core components working in sequence depending on your shell:
 
 ```
-[ Active Bash Session ]
-        │
-        ▼ (Type `/agent <task>`)
-[ Bash Sourcing Wrapper (bin/slash-agent.sh) ] ──► Captures Terminal Screen (tmux pane or history)
-        │
-        ▼ (Launches python controller with context)
-[ Python Orchestrator (slash_agent/main.py) ] ──► Interfaces with Configured Backend (Agent client loop)
-        │
-        ▼ (For each tool execution)
-[ PTY Bridge (slash_agent/tools.py) ] ──────────► Executes subprocess command in interactive PTY
-        │
-        ▼ (Captures exit code, PWD, and env deltas)
-[ State Sync Protocol ] ────────────────────────► Writes parent shell commands to temp file
-        │
-        ▼ (On termination, parent shell sources sync file)
-[ Active Bash Session (Updated State) ]
+[ Active POSIX Session (Bash/Zsh/Ksh) ]           [ Active Fish Session ]
+         │                                                  │
+         ▼ (Type `/agent <task>`)                           ▼ (Type `agent <task>`)
+[ POSIX Wrapper (bin/slash-agent.sh) ]            [ Fish Wrapper (bin/slash-agent.fish) ]
+         │                                                  │
+         └─────────────────────────┬────────────────────────┘
+                                   │ (Captures tmux pane or history)
+                                   ▼ 
+           [ Python Orchestrator (slash_agent/main.py) ] ──► Interfaces with Backend
+                                   │
+                                   ▼ (For each tool execution)
+           [ PTY Bridge (slash_agent/tools.py) ] ──────────► Subprocess in interactive PTY
+                                   │
+                                   ▼ (Captures exit code, PWD, and env deltas)
+           [ State Sync Protocol ] ────────────────────────► Writes shell commands to temp file
+                                   │
+                                   ▼ (On termination, parent shell sources sync file)
+[ Active Session (Updated State) ]
 ```
 
 ### Execution Lifecycle:
-1. **Sourcing Hooks:** Sourcing `bin/slash-agent.sh` injects the `/agent` command function into the current active Bash environment.
-2. **Context Collection:** The wrapper gathers active terminal outputs and invokes the Python orchestrator, passing paths to temporary files for context and state synchronization.
-3. **Agent Loop & Client Initialization:** The Python entrypoint `slash_agent/main.py` parses arguments, configures environment settings, sets up the LLM agent client, and starts the task stream with the configured LLM backend (OpenAI, Ollama, Azure OpenAI, or Dummy).
+1. **Sourcing Hooks:** Sourcing `bin/slash-agent.sh` (or `bin/slash-agent.fish` for Fish) registers the agent command function in the active session.
+2. **Context Collection:** The wrapper gathers active terminal outputs and invokes the Python orchestrator, passing paths to temporary files for context and state synchronization, along with the `--shell` flag indicating the parent shell context.
+3. **Agent Loop & Client Initialization:** The Python entrypoint `slash_agent/main.py` parses arguments (including the active shell parameter), configures environment settings, sets up the LLM agent client, and starts the task stream with the configured LLM backend.
 4. **Interactive Command Execution:** When the agent decides to execute a shell command, it invokes the PTY execution bridge which requests user permission and streams input/output in raw mode.
-5. **Parent Shell Updates:** After execution finishes, env variables and working directory transitions are written out as Bash statements to a temp sync file. The wrapper sources this file on termination, applying the changes directly to the host shell session.
+5. **Parent Shell Updates:** After execution finishes, env variables and working directory transitions are written out as shell-compatible statements (POSIX export/unset or Fish-specific set commands) to a temp sync file. The parent shell wrapper sources this file on exit, applying the changes directly to the host shell session.
 
 ---
 
@@ -44,10 +46,12 @@ To provide the LLM agent with precise context (such as compiler errors, crash lo
   - **Environment Variable:** `AGENT_TMUX_LINES`
   - **Default Value:** `50` lines
   - **Command:** `tmux capture-pane -p -S -<lines>`
-* **Interactive Command History (Fallback):** If tmux is not detected, the wrapper temporarily enables local history options and extracts recent user commands.
+* **Interactive Command History (Fallback):** If tmux is not detected, the wrapper extracts recent user commands using the history utility of the active shell:
+  - **Bash/Ksh**: Uses `history <lines>` (temporarily enabling interactive history).
+  - **Zsh**: Uses `fc -ln -<lines>` (retrieving history commands without line numbers).
+  - **Fish**: Uses `history | head -n <lines>`.
   - **Environment Variable:** `AGENT_HISTORY_COMMANDS`
   - **Default Value:** `20` commands
-  - **Command:** `history <lines>`
 
 ---
 
@@ -65,10 +69,15 @@ The command running inside the PTY is appended with a special marker token `___A
 1. **Output Separation:** The PTY bridge intercepts stdout and stops writing to the screen as soon as it matches the `___AGENT_SHELL_STATE___` token.
 2. **State Updates:** It reads the exit code, extracts the final path of `pwd` to update the agent's virtual `cwd`, and parses the environment variables (serialized as null-terminated strings via `env -0`).
 3. **Environment Deltas:** On termination, `main.py` performs a diff between the initial shell environment variables and the final session variables, writing commands to a temporary file:
-   - For working directory updates: `cd "/new/path"`
-   - For environment additions/updates: `export KEY=VALUE`
-   - For environment deletions: `unset KEY`
-4. **Parent Sourcing:** The parent shell sources this temporary file on wrapper script exit, applying all transitions statefully.
+   - **For POSIX Shells (Bash, Zsh, Ksh)**:
+     - Directory change: `cd "/new/path"`
+     - Additions/updates: `export KEY=VALUE`
+     - Removals: `unset KEY`
+   - **For Fish Shell**:
+     - Directory change: `cd "/new/path"`
+     - Additions/updates: `set -gx KEY VALUE`
+     - Removals: `set -e KEY`
+4. **Parent Sourcing:** The parent shell wrapper sources this temporary file on script exit, applying all transitions statefully.
 
 ---
 

@@ -80,23 +80,23 @@ fi
 .venv/bin/pip install -r requirements.txt || { echo "Error: Failed to install Python dependencies."; exit 1; }
 
 # 4. Interactive LLM Backend Configuration
-if [ -f "$INSTALL_DIR/.env" ]; then
+if [ -f ".env" ]; then
     echo "Configuration file $INSTALL_DIR/.env already exists. Ensuring all backend variables are configured..."
     
     # Helper to check/append keys
     amend_env_val() {
         local key="$1"
         local val="$2"
-        if ! grep -q "^$key=" "$INSTALL_DIR/.env"; then
-            echo "$key=\"$val\"" >> "$INSTALL_DIR/.env"
+        if ! grep -q "^$key=" ".env"; then
+            echo "$key=\"$val\"" >> ".env"
             echo "  Added missing configuration: $key=\"$val\""
         fi
     }
     
     # Infer backend if AGENT_BACKEND is missing
-    if ! grep -q "^AGENT_BACKEND=" "$INSTALL_DIR/.env"; then
+    if ! grep -q "^AGENT_BACKEND=" ".env"; then
         existing_endpoint=""
-        existing_endpoint=$(grep "^AGENT_ENDPOINT=" "$INSTALL_DIR/.env" | cut -d'=' -f2- | tr -d '"'\' || true)
+        existing_endpoint=$(grep "^AGENT_ENDPOINT=" ".env" | cut -d'=' -f2- | tr -d '"'\' || true)
         if [[ "$existing_endpoint" == *":11434"* ]]; then
             echo "Inferred legacy Ollama backend from existing endpoint."
             amend_env_val "AGENT_BACKEND" "ollama"
@@ -108,11 +108,11 @@ if [ -f "$INSTALL_DIR/.env" ]; then
     
     # Ensure placeholder keys for API key variables are appended if missing
     for key in OPENAI_API_KEY AZURE_OPENAI_API_KEY AZURE_OPENAI_API_VERSION; do
-        if ! grep -q "$key" "$INSTALL_DIR/.env"; then
+        if ! grep -q "$key" ".env"; then
             if [ "$key" = "AZURE_OPENAI_API_VERSION" ]; then
-                echo "# AZURE_OPENAI_API_VERSION=\"2024-02-15-preview\"" >> "$INSTALL_DIR/.env"
+                echo "# AZURE_OPENAI_API_VERSION=\"2024-02-15-preview\"" >> ".env"
             else
-                echo "# $key=\"\"" >> "$INSTALL_DIR/.env"
+                echo "# $key=\"\"" >> ".env"
             fi
         fi
     done
@@ -275,28 +275,56 @@ except Exception:
         [ -n "$OPENAI_API_KEY_VAL" ] && echo "OPENAI_API_KEY=\"$OPENAI_API_KEY_VAL\""
         [ -n "$AZURE_OPENAI_API_KEY_VAL" ] && echo "AZURE_OPENAI_API_KEY=\"$AZURE_OPENAI_API_KEY_VAL\""
         [ -n "$AZURE_OPENAI_API_VERSION_VAL" ] && echo "AZURE_OPENAI_API_VERSION=\"$AZURE_OPENAI_API_VERSION_VAL\""
-    } > "$INSTALL_DIR/.env"
+    } > ".env"
     echo "Configuration saved successfully."
 fi
 # 5. Idempotent Shell Profile Registration
-SHELL_RC="$HOME/.bashrc"
+echo "Configuring shell integration..."
+
+# Detect active shell from $SHELL variable, default to bash
+CURRENT_SHELL=$(basename "${SHELL:-bash}")
+SHELL_RC=""
 SOURCE_LINE="source $INSTALL_DIR/bin/slash-agent.sh"
 
-echo "Configuring shell integration..."
-if [ -f "$SHELL_RC" ]; then
-    if grep -Fq "$SOURCE_LINE" "$SHELL_RC"; then
-        echo "Shell integration already configured in $SHELL_RC."
-    else
-        echo "Adding sourcing command to $SHELL_RC..."
-        echo "" >> "$SHELL_RC"
-        echo "# slash-agent Integration" >> "$SHELL_RC"
-        echo "$SOURCE_LINE" >> "$SHELL_RC"
-        echo "Shell integration successfully added to $SHELL_RC."
-    fi
+OS_TYPE=$(uname -s 2>/dev/null || echo "Unknown")
+
+if [ "$CURRENT_SHELL" = "zsh" ] || [ -n "$ZSH_VERSION" ]; then
+    SHELL_RC="$HOME/.zshrc"
+elif [ "$CURRENT_SHELL" = "fish" ]; then
+    SHELL_RC="$HOME/.config/fish/config.fish"
+    SOURCE_LINE="source $INSTALL_DIR/bin/slash-agent.fish"
+elif [ "$CURRENT_SHELL" = "ksh" ]; then
+    SHELL_RC="$HOME/.kshrc"
 else
-    echo "Warning: Shell configuration file $SHELL_RC not found."
-    echo "Please add the following line manually to your shell configuration file:"
-    echo "  $SOURCE_LINE"
+    # Bash or other Bourne-like shell
+    if [ "$OS_TYPE" = "Darwin" ]; then
+        # On macOS, login shells read .bash_profile / .profile
+        if [ -f "$HOME/.bash_profile" ]; then
+            SHELL_RC="$HOME/.bash_profile"
+        else
+            SHELL_RC="$HOME/.profile"
+        fi
+    else
+        SHELL_RC="$HOME/.bashrc"
+    fi
+fi
+
+# Ensure parent directory for configuration file exists (e.g. for ~/.config/fish)
+mkdir -p "$(dirname "$SHELL_RC")"
+
+# Create the file if it does not exist
+if [ ! -f "$SHELL_RC" ]; then
+    touch "$SHELL_RC"
+fi
+
+if grep -Fq "$SOURCE_LINE" "$SHELL_RC"; then
+    echo "Shell integration already configured in $SHELL_RC."
+else
+    echo "Adding sourcing command to $SHELL_RC..."
+    echo "" >> "$SHELL_RC"
+    echo "# slash-agent Integration" >> "$SHELL_RC"
+    echo "$SOURCE_LINE" >> "$SHELL_RC"
+    echo "Shell integration successfully added to $SHELL_RC."
 fi
 
 echo "=============================================="
@@ -306,6 +334,6 @@ else
     echo "Installation complete!"
 fi
 echo "To start using the agent in your current shell session, run:"
-echo "  source $INSTALL_DIR/bin/slash-agent.sh"
-echo "Then use /agent followed by your command."
+echo "  $SOURCE_LINE"
+echo "Then use /agent (or 'agent' in Fish) followed by your command."
 echo "=============================================="

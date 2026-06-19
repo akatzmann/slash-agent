@@ -28,9 +28,9 @@ load_dotenv(os.path.join(repo_root, ".env"))
 # Save starting environment for diff sync on exit (after loading .env)
 STARTING_ENV = os.environ.copy()
 
-def get_env_diff() -> str:
+def get_env_diff(shell: str = "bash") -> str:
     """Computes the difference between starting env and current session state env,
-    returning bash export statements.
+    returning shell-compatible environment update statements.
     """
     diff_cmds = []
     
@@ -41,12 +41,18 @@ def get_env_diff() -> str:
             continue
         if k not in STARTING_ENV or STARTING_ENV[k] != v:
             import shlex
-            diff_cmds.append(f'export {k}={shlex.quote(v)}')
+            if shell == "fish":
+                diff_cmds.append(f'set -gx {k} {shlex.quote(v)}')
+            else:
+                diff_cmds.append(f'export {k}={shlex.quote(v)}')
             
     # Check for removals
     for k in STARTING_ENV:
         if k not in session_state.env_vars:
-            diff_cmds.append(f'unset {k}')
+            if shell == "fish":
+                diff_cmds.append(f'set -e {k}')
+            else:
+                diff_cmds.append(f'unset {k}')
             
     return "\n".join(diff_cmds)
 
@@ -54,6 +60,7 @@ async def main_async():
     parser = argparse.ArgumentParser(description="Native LLM Agent Shell Integration")
     parser.add_argument("--context-file", type=str, help="File containing captured terminal history/context")
     parser.add_argument("--sync-file", type=str, help="Temp file to write environment sync commands for parent shell")
+    parser.add_argument("--shell", type=str, default="bash", choices=["bash", "zsh", "ksh", "fish"], help="The active host shell type")
     parser.add_argument("-y", "--yes", action="store_true", help="Auto-confirm all commands")
     parser.add_argument("--unsafe-yes", action="store_true", help="Auto-confirm even critical/dangerous commands")
     parser.add_argument("-n", "--dry-run", action="store_true", help="Dry run simulation mode")
@@ -208,7 +215,7 @@ async def main_async():
                     sync_cmds.append(f'cd "{session_state.cwd}"')
                 
                 # Env diff sync
-                env_diff = get_env_diff()
+                env_diff = get_env_diff(args.shell)
                 if env_diff:
                     sync_cmds.append(env_diff)
                     

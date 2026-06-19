@@ -17,13 +17,13 @@
 
 ## ⚡ Quick Start (5-Second Install)
 
-Get up and running instantly. Run the quick installer script in your Bash shell:
+Get up and running instantly. Run the quick installer script in your shell (supports Bash, Zsh, Ksh, and Fish):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/akatzmann/slash-agent/master/bin/installer.sh | bash
 ```
 
-*(This automatically clones the repo to `~/.slash-agent`, configures a Python virtual environment, installs requirements, and registers the `/agent` command helper wrapper in your `~/.bashrc`.)*
+*(This automatically clones the repo to `~/.slash-agent`, configures a Python virtual environment, installs requirements, and registers the shell integration in your appropriate shell profile file, e.g. `~/.zshrc`, `~/.bashrc`, `~/.bash_profile`, or `config.fish`.)*
 
 ---
 
@@ -114,10 +114,20 @@ If you prefer to set up the agent manually instead of using the Quick Start scri
    pip install -r requirements.txt
    ```
 3. **Register Shell Integration:**
-   Add this line to your `~/.bashrc`:
-   ```bash
-   source ~/.slash-agent/bin/slash-agent.sh
-   ```
+   Add the appropriate sourcing statement to your shell configuration file:
+   * **Bash (Linux):** `source ~/.slash-agent/bin/slash-agent.sh` in `~/.bashrc`
+   * **Bash (macOS):** `source ~/.slash-agent/bin/slash-agent.sh` in `~/.bash_profile` (or `~/.profile`)
+   * **Zsh:** `source ~/.slash-agent/bin/slash-agent.sh` in `~/.zshrc`
+   * **Ksh:** `source ~/.slash-agent/bin/slash-agent.sh` in `~/.kshrc`
+   * **Fish:** `source ~/.slash-agent/bin/slash-agent.fish` in `~/.config/fish/config.fish`
+
+---
+
+## 💻 Windows Support (WSL2)
+
+**slash-agent** runs natively inside Unix-like PTY environments. Native Windows execution (under standard `CMD` or `PowerShell`) is not supported due to PTY emulation limitations.
+
+However, the tool is **100% compatible with WSL2 (Windows Subsystem for Linux)**. Windows users can run `slash-agent` by opening any WSL2 Linux terminal (such as Ubuntu or Debian) and running the standard Quick Start installation command.
 
 ---
 
