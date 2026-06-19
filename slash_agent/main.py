@@ -112,7 +112,7 @@ async def main_async():
     model = os.environ.get("AGENT_MODEL", "")
     api_key = os.environ.get("OPENAI_API_KEY", "")
 
-    print(f"\033[1;30m[slash-agent] Using backend '{backend_type}'...\033[0m")
+    print(f"\033[1;34m[slash-agent] Using backend '{backend_type}'...\033[0m")
 
     try:
         if backend_type == "openai":
@@ -126,7 +126,7 @@ async def main_async():
                 client_kwargs["api_key"] = api_key
             client = AsyncOpenAI(**client_kwargs)
             backend = OpenAIBackend(client=client, model=resolved_model)
-            print(f"\033[1;30m[slash-agent] Model '{resolved_model}' via OpenAI-compatible endpoint.\033[0m")
+            print(f"\033[1;34m[slash-agent] Model '{resolved_model}' via OpenAI-compatible endpoint.\033[0m")
 
         elif backend_type == "ollama":
             from ollama import AsyncClient
@@ -134,7 +134,7 @@ async def main_async():
             resolved_endpoint = endpoint or "http://127.0.0.1:11434"
             resolved_model = model or "gemma4:e4b-it-qat"
             backend = OllamaBackend(client=AsyncClient(host=resolved_endpoint), model=resolved_model)
-            print(f"\033[1;30m[slash-agent] Model '{resolved_model}' at '{resolved_endpoint}' via Ollama.\033[0m")
+            print(f"\033[1;34m[slash-agent] Model '{resolved_model}' at '{resolved_endpoint}' via Ollama.\033[0m")
 
         elif backend_type == "azure_openai":
             from openai import AsyncAzureOpenAI
@@ -148,12 +148,12 @@ async def main_async():
                 azure_endpoint=endpoint,
             )
             backend = AzureOpenAIBackend(client=client, model=resolved_model)
-            print(f"\033[1;30m[slash-agent] Model '{resolved_model}' via Azure OpenAI.\033[0m")
+            print(f"\033[1;34m[slash-agent] Model '{resolved_model}' via Azure OpenAI.\033[0m")
 
         elif backend_type == "dummy":
             from py_agent_core.backends.dummy import DummyBackend
             backend = DummyBackend()
-            print(f"\033[1;30m[slash-agent] Running in offline dummy mode.\033[0m")
+            print(f"\033[1;34m[slash-agent] Running in offline dummy mode.\033[0m")
 
         else:
             print(f"\033[1;31m[Error] Unknown backend '{backend_type}'. Valid options: openai, ollama, azure_openai, dummy.\033[0m")
