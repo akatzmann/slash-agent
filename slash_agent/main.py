@@ -94,14 +94,15 @@ async def main_async():
     # Add captured terminal history as system context if present
     if captured_context:
         full_prompt = (
-            f"=== PRIMARY DIRECTIVE ===\n"
+            f"# Primary Directive\n"
             f"You MUST accomplish the following task: {user_prompt}\n\n"
-            f"=== CONTEXT INSTRUCTIONS ===\n"
+            f"# Context Instructions\n"
             f"The terminal outputs and history below are provided strictly for background reference. "
-            f"Do NOT try to fix errors found in this history unless the task above explicitly asks you to fix or diagnose them.\n\n"
-            f"--- TERMINAL CONTEXT BACKGROUND ---\n"
+            f"Do NOT attempt to fix errors found in this history unless the task above explicitly asks you to fix or diagnose them.\n\n"
+            f"# Terminal Context Background\n"
+            f"```text\n"
             f"{captured_context}\n"
-            f"-----------------------------------"
+            f"```"
         )
     else:
         full_prompt = user_prompt
@@ -164,21 +165,22 @@ async def main_async():
         sys.exit(1)
         
     system_prompt = (
-        "You are an expert software engineer and shell automation agent.\n"
-        "You help users directly in their terminal shell.\n"
-        "To accomplish the user's task, you can execute shell commands using the `execute_command` tool.\n"
+        "# Role & Identity\n"
+        "You are an expert software engineer and shell automation agent helping users directly in their terminal shell.\n"
         "\n"
-        f"Running as user '{os.getlogin()} (uid: {os.getuid()})\n"
-        f"Current working directory: {os.getcwd()}\n"
+        "# Environment Context\n"
+        f"- Active User: {os.getlogin()} (UID: {os.getuid()})\n"
+        f"- Current Working Directory: {os.getcwd()}\n"
         "\n"
-        "IMPORTANT RULES:\n"
-        "1. Prefer non-interactive flags (e.g. `apt install -y` or `npx -y`) to avoid blocking. Do not run text editors like `nano` or `vim`.\n"
-        "2. Do not attempt commands that are endless unless they have a timeout (e.g. do not run `tail -f` or raw `ping` without counts).\n"
-        "3. Always check exit codes and stderr of your commands. If a command fails, debug it, explore the directories, read the files, and try an alternative approach.\n"
-        "4. Your working directory and env variables are preserved statefully between tool executions.\n"
-        "5. When you have finished the task, output a concise explanation detailing what you did and the outcomes.\n"
-        "6. If the task is unclear or ambiguous, you MUST use the `request_user_input` tool to prompt the user for clarification. Do NOT use it to ask for permission to run commands or confirm individual steps, as the parent shell's prompt automatically prompts the user to confirm all proposed command executions.\n"
-        "7. For every command execution, you MUST specify `risk_level` (either 'safe', 'low', 'moderate', or 'critical'). For 'moderate' and 'critical' risk levels, you MUST also provide a `risk_description` explaining the risk. For 'safe' and 'low' risk levels, `risk_description` is optional and should be left empty unless there is a specific caution."
+        "# Operational Guidelines\n"
+        "1. **Command Execution**:\n"
+        "   - Prefer non-interactive flags (e.g., `-y`, `-m`) to avoid blocking standard input.\n"
+        "   - Do NOT run interactive text editors (e.g., `nano`, `vim`).\n"
+        "   - Do NOT run endless commands without limits/timeouts (e.g., use `ping -c 4`, not raw `ping`; avoid `tail -f`).\n"
+        "2. **Error Recovery**:\n"
+        "   - Inspect exit codes and stderr of execution outputs. If a command fails, explore the workspace, view relevant files, and resolve the issue with an alternative command.\n"
+        "3. **Completion Format**:\n"
+        "   - Upon finishing, output a concise markdown summary explaining your actions and outcomes."
     )
     
     agent = Agent(

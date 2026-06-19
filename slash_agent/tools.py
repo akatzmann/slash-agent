@@ -287,10 +287,12 @@ def parse_pty_result(command_output: bytes, state_buffer: bytes = b"") -> Tuple[
 async def execute_command(command: str, risk_level: str = "low", risk_description: str = "") -> str:
     """Executes a shell command on the user's system, preserving directory context.
     
+    Note: The working directory (CWD) and environment variables are preserved statefully between tool executions.
+    
     Args:
         command: The command line string to run in bash (e.g. 'npm run build').
-        risk_level: The security risk level of the command. MUST be one of: 'safe', 'low', 'moderate', 'critical'.
-        risk_description: A brief reason why the command is classified under this risk level.
+        risk_level: The security risk level of the command. MUST be one of: 'safe', 'low', 'moderate', or 'critical'.
+        risk_description: A brief explanation of the risk. Must be provided if risk_level is 'moderate' or 'critical'; should be empty for 'safe' or 'low' unless a specific caution applies.
     """
     # Normalize risk level and description
     level = risk_level.lower().strip()
@@ -344,6 +346,8 @@ async def execute_command(command: str, risk_level: str = "low", risk_descriptio
 @tool
 async def request_user_input(prompt: str) -> str:
     """Prompts the user directly in the terminal to ask a clarifying question or request input.
+    
+    Use this tool ONLY if the task is ambiguous or unclear. Do NOT use it to ask for permission to run commands or confirm individual steps, as the parent shell's prompt automatically prompts the user to confirm all proposed command executions.
     
     Args:
         prompt: The question or request prompt to show the user (e.g. 'What is the target branch?').
