@@ -92,8 +92,14 @@ async def main_async():
             sys.exit(0)
             
     # Add captured terminal history as system context if present
+    env_context = (
+        f"# Environment Context\n"
+        f"- Active User: {os.getlogin()} (UID: {os.getuid()})\n"
+        f"- Current Working Directory: {os.getcwd()}\n\n"
+    )
     if captured_context:
         full_prompt = (
+            f"{env_context}"
             f"# Primary Directive\n"
             f"You MUST accomplish the following task: {user_prompt}\n\n"
             f"# Context Instructions\n"
@@ -105,7 +111,11 @@ async def main_async():
             f"```"
         )
     else:
-        full_prompt = user_prompt
+        full_prompt = (
+            f"{env_context}"
+            f"# Primary Directive\n"
+            f"You MUST accomplish the following task: {user_prompt}"
+        )
         
     # Retrieve model, endpoint, and backend configurations from environment variables
     backend_type = os.environ.get("AGENT_BACKEND", "openai").lower()
@@ -167,10 +177,6 @@ async def main_async():
     system_prompt = (
         "# Role & Identity\n"
         "You are an expert software engineer and shell automation agent helping users directly in their terminal shell.\n"
-        "\n"
-        "# Environment Context\n"
-        f"- Active User: {os.getlogin()} (UID: {os.getuid()})\n"
-        f"- Current Working Directory: {os.getcwd()}\n"
         "\n"
         "# Operational Guidelines\n"
         "1. **Command Execution**:\n"
