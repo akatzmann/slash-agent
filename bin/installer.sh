@@ -178,7 +178,12 @@ else
         python3 -c "
 import urllib.request, json, sys
 try:
-    with urllib.request.urlopen('${host}/api/tags', timeout=3) as r:
+    if any(h in '${host}' for h in ('127.0.0.1', 'localhost')):
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        r = opener.open('${host}/api/tags', timeout=3)
+    else:
+        r = urllib.request.urlopen('${host}/api/tags', timeout=3)
+    with r:
         models = [m['name'] for m in json.loads(r.read().decode('utf-8')).get('models', [])]
         print('\n'.join(models))
 except Exception:

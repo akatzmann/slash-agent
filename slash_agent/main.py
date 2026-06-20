@@ -2,9 +2,7 @@ import asyncio
 import argparse
 import sys
 import os
-from py_agent_core.agent import Agent
-from slash_agent.tools import execute_command, request_user_input, session_state
-
+import re
 
 def load_dotenv(env_path: str):
     """Manually parse .env file to load variables into os.environ."""
@@ -25,8 +23,53 @@ def load_dotenv(env_path: str):
 repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 load_dotenv(os.path.join(repo_root, ".env"))
 
-# Save starting environment for diff sync on exit (after loading .env)
+def sanitize_proxy_env():
+    """Sanitize proxy environment variables for compatibility and sync casing."""
+    # 1. Synchronize proxy endpoints across both cases
+    for upper, lower in (("HTTP_PROXY", "http_proxy"), ("HTTPS_PROXY", "https_proxy")):
+        val = os.environ.get(lower) or os.environ.get(upper)
+        if val:
+            os.environ[lower] = val
+            os.environ[upper] = val
+
+    # 2. Extract bypass values from whichever case is defined
+    raw_no_proxy = os.environ.get("no_proxy") or os.environ.get("NO_PROXY") or ""
+    
+    entries = []
+    if raw_no_proxy:
+        for entry in re.split(r'[\s,]+', raw_no_proxy):
+            entry = entry.strip()
+            if not entry:
+                continue
+            # Strip wildcards (*.domain.com -> domain.com) since httpx doesn't support them
+            if entry.startswith("*."):
+                entry = entry[2:]
+            elif entry.startswith("*"):
+                entry = entry[1:]
+            entries.append(entry)
+            
+    # 3. If a proxy is configured, ensure localhost/127.0.0.1 bypasses are present
+    has_proxy = any(os.environ.get(k) for k in ("http_proxy", "https_proxy"))
+    if has_proxy:
+        if "localhost" not in entries:
+            entries.append("localhost")
+        if "127.0.0.1" not in entries:
+            entries.append("127.0.0.1")
+            
+    # 4. Write back sanitized values to both lowercase and uppercase keys
+    if entries:
+        no_proxy_str = ",".join(entries)
+        os.environ["no_proxy"] = no_proxy_str
+        os.environ["NO_PROXY"] = no_proxy_str
+
+sanitize_proxy_env()
+
+# Save starting environment for diff sync on exit (after loading .env and sanitization)
 STARTING_ENV = os.environ.copy()
+
+# Import agent and tools (ensuring tools capture the sanitized os.environ in session_state)
+from py_agent_core.agent import Agent
+from slash_agent.tools import execute_command, request_user_input, session_state
 
 def get_env_diff(shell: str = "bash") -> str:
     """Computes the difference between starting env and current session state env,
