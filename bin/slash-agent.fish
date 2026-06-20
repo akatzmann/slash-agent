@@ -5,6 +5,12 @@
 set -l _SLASH_AGENT_ROOT (dirname (dirname (status filename)))
 
 function agent -d "Native LLM Agent Terminal Copilot"
+    # 1. Intercept configuration flags instantly
+    if test "$argv[1]" = "--configure" -o "$argv[1]" = "-c"
+        bash "$_SLASH_AGENT_ROOT/bin/installer.sh" --configure
+        return
+    end
+
     set -l CONTEXT_FILE (mktemp -t agent_context.XXXXXX)
     set -l SYNC_FILE (mktemp -t agent_sync.XXXXXX)
     

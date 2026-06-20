@@ -99,6 +99,7 @@ Confirm action: [y]es / [n]o / [e]dit / [c]omment ?
 - **`-y`, `--yes` (Auto-confirm):** Skips the confirmation prompt and executes commands automatically. Note: This will **not** auto-confirm commands flagged with a `critical` risk level (e.g. `rm -rf`, `sudo`).
 - **`--unsafe-yes` (Unsafe Auto-confirm):** Auto-confirms all commands, bypassing prompts even for `critical` risk operations.
 - **`-n`, `--dry-run` (Simulation):** Simulates a successful execution (Exit code 0, mock output) without making changes to the system.
+- **`-c`, `--configure` (Re-configuration):** Launches the interactive configuration wizard, allowing you to easily adjust backend, model, endpoint, keys, and thinking level settings. (This flag is intercepted at the shell-wrapper level).
 
 ### Command Safety Risk Levels
 Before prompting the user (or deciding to auto-confirm), the system evaluates the safety category of every proposed command:
@@ -110,13 +111,20 @@ Before prompting the user (or deciding to auto-confirm), the system evaluates th
 ### Configuration Environment Variables
 Configure these variables in your `.env` file, shell profile, or `~/.bashrc`:
 - `AGENT_BACKEND`: LLM backend engine. Supported options: `openai` (default), `ollama`, `azure_openai`, `dummy`.
-- `AGENT_MODEL`: Model name used by the LLM backend. Defaults to `gpt-4o-mini` for `openai`, `gemma4:e4b-it-qat` for `ollama`, and `gpt-4o` for `azure_openai`.
+- `AGENT_MODEL`: Model name used by the LLM backend. Defaults to `gpt-5.4-nano` for `openai`, `gemma4:latest` for `ollama`, and `gpt-5.4-nano` for `azure_openai`.
 - `AGENT_ENDPOINT`: Host base URL endpoint. Defaults: official OpenAI API endpoint for `openai`, `http://127.0.0.1:11434` for `ollama`.
 - `OPENAI_API_KEY`: API key for the default `openai` backend.
 - `AZURE_OPENAI_API_KEY`: API key for the `azure_openai` backend.
 - `AZURE_OPENAI_API_VERSION`: API version for the `azure_openai` backend (defaults to `2024-02-15-preview`).
 - `AGENT_TMUX_LINES`: Lines captured from tmux scrollback (defaults to `50`).
 - `AGENT_HISTORY_COMMANDS`: Number of commands captured from history fallback (defaults to `20`).
+- `AGENT_THINKING_LEVEL`: Specifies the thinking/reasoning depth level. Valid options are `off` (default), `low`, `medium`, and `high`. Maps to `reasoning_effort` for OpenAI models and toggles thinking options (`think=True`) in Ollama backends (e.g., DeepSeek-R1).
+
+### Visual Formatting of Reasoning Stream
+When an agent is configured with a thinking level other than `"off"`, the LLM backend streams reasoning/thinking tokens before generating the final text response. `slash-agent` captures these events (`thinking_delta`) and formats them visually in the terminal:
+1. **Header Block:** Preceded by a bold dark gray `[Thinking...]` header.
+2. **Styled Output:** The reasoning stream is wrapped inside ANSI Dim and Italic escape codes (`\033[3;90m...\033[0m`) to distinguish it from standard response text.
+3. **Response Transition:** As soon as the model finishes reasoning and starts outputting normal response text (`text_delta`), the style block is closed and a bold green `[Agent Response]` header is printed.
 
 ---
 

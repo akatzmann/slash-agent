@@ -18,8 +18,8 @@
 - [x] 3.1 Verify default OpenAI backend initializes correctly
 - [x] 3.2 Verify Ollama backend configuration still behaves as expected
 - [x] 3.3 Verify Dummy backend can be selected and runs successfully
-- [ ] 3.4 Verify installer `.env` upgrade/migration logic correctly infers `ollama` backend from port 11434 and appends missing variables
-- [ ] 3.5 Verify the OpenAI model selection menu functions correctly during installer run
-- [ ] 3.6 Verify that updating forces `py-agent-core` to be reinstalled from Git
+- [x] 3.4 Verify installer `.env` upgrade/migration logic correctly infers `ollama` backend from port 11434 and appends missing variables
+- [x] 3.5 Verify the OpenAI model selection menu functions correctly during installer run
+- [x] 3.6 Verify that updating forces `py-agent-core` to be reinstalled from Git
 
 

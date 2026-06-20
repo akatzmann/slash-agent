@@ -139,8 +139,8 @@ Configure the LLM backend, endpoint, model, and capture settings in your `.env` 
 # LLM Backend: openai (default), ollama, azure_openai, dummy
 export AGENT_BACKEND="openai"
 
-# Model name (Defaults: gpt-4o-mini for openai, gemma4:e4b-it-qat for ollama)
-export AGENT_MODEL="gpt-4o-mini"
+# Model name (Defaults: gpt-5.4-nano for openai, gemma4:latest for ollama)
+export AGENT_MODEL="gpt-5.4-nano"
 
 # API endpoint base URL (defaults to official OpenAI API endpoint)
 export AGENT_ENDPOINT=""
@@ -151,9 +151,22 @@ export OPENAI_API_KEY="your-api-key-here"
 # Context extraction settings
 export AGENT_TMUX_LINES=50          # Lines captured from active tmux scrollback
 export AGENT_HISTORY_COMMANDS=20    # Commands captured from history fallback
+
+# Thinking / reasoning mode settings
+export AGENT_THINKING_LEVEL="off"   # Thinking level: off (default), low, medium, high (for reasoning models)
 ```
 
 For a full list of configuration variables (e.g., Azure OpenAI variables), see the [.env.template](.env.template) file.
+
+### 🔄 Re-configuration
+
+Instead of manually editing the `.env` file, you can re-run the interactive configuration prompts at any time:
+```bash
+/agent --configure
+# or using the shortcut
+/agent -c
+```
+This launches the setup wizard, pre-populated with your current configuration choices as defaults so you can quickly update backends, models, endpoints, keys, and thinking levels.
 
 ---
 

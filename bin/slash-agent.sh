@@ -16,6 +16,12 @@ fi
 _SLASH_AGENT_ROOT=$(dirname "$_SLASH_AGENT_ROOT")
 
 function _agent_run {
+    # 1. Intercept configuration flags instantly
+    if [ "$1" = "--configure" ] || [ "$1" = "-c" ]; then
+        bash "$_SLASH_AGENT_ROOT/bin/installer.sh" --configure
+        return $?
+    fi
+
     local CONTEXT_FILE
     CONTEXT_FILE=$(mktemp "${TMPDIR:-/tmp}/agent_context.XXXXXX")
     local SYNC_FILE

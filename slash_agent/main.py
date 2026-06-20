@@ -117,11 +117,12 @@ async def main_async():
             f"You MUST accomplish the following task: {user_prompt}"
         )
         
-    # Retrieve model, endpoint, and backend configurations from environment variables
+    # Retrieve model, endpoint, backend, and behavior configurations from environment variables
     backend_type = os.environ.get("AGENT_BACKEND", "openai").lower()
     endpoint = os.environ.get("AGENT_ENDPOINT", "")
     model = os.environ.get("AGENT_MODEL", "")
     api_key = os.environ.get("OPENAI_API_KEY", "")
+    thinking_level = os.environ.get("AGENT_THINKING_LEVEL", "off").lower()
 
     print(f"\033[1;34m[slash-agent] Using backend '{backend_type}'...\033[0m")
 
@@ -129,7 +130,7 @@ async def main_async():
         if backend_type == "openai":
             from openai import AsyncOpenAI
             from py_agent_core.backends.openai import OpenAIBackend
-            resolved_model = model or "gpt-4o-mini"
+            resolved_model = model or "gpt-5.4-nano"
             client_kwargs = {}
             if endpoint:
                 client_kwargs["base_url"] = endpoint
@@ -143,7 +144,7 @@ async def main_async():
             from ollama import AsyncClient
             from py_agent_core.backends.ollama import OllamaBackend
             resolved_endpoint = endpoint or "http://127.0.0.1:11434"
-            resolved_model = model or "gemma4:e4b-it-qat"
+            resolved_model = model or "gemma4:latest"
             backend = OllamaBackend(client=AsyncClient(host=resolved_endpoint), model=resolved_model)
             print(f"\033[1;34m[slash-agent] Model '{resolved_model}' at '{resolved_endpoint}' via Ollama.\033[0m")
 
@@ -152,7 +153,7 @@ async def main_async():
             from py_agent_core.backends.azure_openai import AzureOpenAIBackend
             azure_api_key = os.environ.get("AZURE_OPENAI_API_KEY", api_key)
             azure_api_version = os.environ.get("AZURE_OPENAI_API_VERSION", "2024-02-15-preview")
-            resolved_model = model or "gpt-4o"
+            resolved_model = model or "gpt-5.4-nano"
             client = AsyncAzureOpenAI(
                 api_key=azure_api_key,
                 api_version=azure_api_version,
@@ -193,21 +194,35 @@ async def main_async():
         backend=backend,
         initial_state={
             "systemPrompt": system_prompt,
-            "tools": [execute_command, request_user_input]
+            "tools": [execute_command, request_user_input],
+            "thinkingLevel": thinking_level
         }
     )
     
     # Run agent streaming prompt
     try:
         print(f"\033[1;32m[Agent Started Task]\033[0m")
+        is_thinking = False
         async for event in agent.prompt_stream(full_prompt):
             if event.type == "message_update":
                 ev = getattr(event, "assistant_message_event", {})
-                if ev.get("type") == "text_delta":
+                if ev.get("type") == "thinking_delta":
+                    if not is_thinking:
+                        print("\n\033[1;30m[Thinking...]\033[0m\n\033[3;90m", end="", flush=True)
+                        is_thinking = True
+                    print(ev["delta"], end="", flush=True)
+                elif ev.get("type") == "text_delta":
+                    if is_thinking:
+                        print("\033[0m\n\n\033[1;32m[Agent Response]\033[0m\n", end="", flush=True)
+                        is_thinking = False
                     print(ev["delta"], end="", flush=True)
             elif event.type == "agent_end":
+                if is_thinking:
+                    print("\033[0m")
                 print()
             elif event.type == "error":
+                if is_thinking:
+                    print("\033[0m")
                 print(f"\n\033[1;31m[Agent Error]:\033[0m {getattr(event, 'content', 'Unknown error occurred')}")
     except KeyboardInterrupt:
         print("\n\033[1;31m[Agent Interrupted]\033[0m")
