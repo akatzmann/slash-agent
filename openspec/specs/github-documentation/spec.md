@@ -1,17 +1,22 @@
 # github-documentation Specification
 
 ## Purpose
-TBD - created by archiving change add-github-documentation. Update Purpose after archive.
+Provides technical documentation and guide resources outlining slash-agent architecture, configuration parameters, and platforms compatibility guidelines.
+
 ## Requirements
+
 ### Requirement: Architecture and Component Documentation
-The documentation SHALL describe the three core components: Bash sourcing wrapper, Python controller, and PTY execution tool, explaining the complete execution lifecycle.
+The documentation SHALL describe the core components: the POSIX shell sourcing wrapper (supporting Bash, Zsh, Ksh), the Fish sourcing wrapper, the Python controller, and the PTY execution tool, explaining the complete execution lifecycle.
 
 #### Scenario: Verification of component details
 - **WHEN** the user reads the architecture section of `docs/documentation.md`
 - **THEN** they find detailed descriptions of:
-  - Sourcing `bin/agent-shell.sh` to inject the `/agent` wrapper function.
-  - Sourcing temporary environment files to apply working directory updates (`cd`) and exports.
-  - The Python entrypoint `agent_shell/main.py` configuring client and LLM agent contexts.
+  - Sourcing `bin/slash-agent.sh` to inject the `/agent` wrapper function for Bash/Zsh/Ksh.
+  - Sourcing `bin/slash-agent.fish` to inject the `/agent` wrapper function for Fish.
+  - Sourcing temporary environment files to apply working directory updates (`cd`) and exports (utilizing standard Bourne export/unset or Fish-specific set commands).
+  - The Python entrypoint `slash_agent/main.py` configuring client, backend, and LLM agent contexts.
+
+---
 
 ### Requirement: Scrollback and History Capture Documentation
 The documentation SHALL detail the context extraction mechanism, explaining how context is retrieved dynamically.
@@ -21,6 +26,8 @@ The documentation SHALL detail the context extraction mechanism, explaining how 
 - **THEN** they find specifications for:
   - Pane scrollback retrieval using `tmux capture-pane` (controlled by `AGENT_TMUX_LINES`, defaulting to 50 lines).
   - Terminal interactive history extraction fallback (controlled by `AGENT_HISTORY_COMMANDS`, defaulting to 20 commands).
+
+---
 
 ### Requirement: Parent Shell Environment Sync Protocol Documentation
 The documentation SHALL define the state synchronization protocol, explaining how the subprocess state is communicated back to the parent shell.
@@ -32,6 +39,8 @@ The documentation SHALL define the state synchronization protocol, explaining ho
   - Capturing PTY output, exit code, and `pwd`.
   - Capturing current environment variables via null-terminated byte sequences (`env -0`).
   - How environment delta commands are written to a temp file and evaluated in the host shell.
+
+---
 
 ### Requirement: Interactive Steering and Configuration Options
 The documentation SHALL list all interactive user steering actions (y/n/e/c) and CLI parameters (`-y/--yes`, `-n/--dry-run`), defining their operational outcomes.
@@ -46,3 +55,23 @@ The documentation SHALL list all interactive user steering actions (y/n/e/c) and
   - **`-y`/`--yes`:** Automatically accept all commands without confirmation prompts.
   - **`-n`/`--dry-run`:** Simulate commands and report simulated successes.
 
+---
+
+### Requirement: Windows Compatibility Documentation
+The documentation SHALL specify the compatibility requirements for Windows users, guiding them to use WSL2 (Windows Subsystem for Linux) as the supported environment.
+
+#### Scenario: Windows developer reads compatibility guide
+- **WHEN** a Windows developer checks the compatibility or installation section in `README.md`
+- **THEN** they find clear documentation instructing them to use WSL2 (Ubuntu/Debian) to install and run the agent natively.
+
+---
+
+### Requirement: Documentation for Thinking Mode and Re-configuration
+The system documentation MUST include detailed instructions for configuring, using, and updating the agent's thinking level and running the re-configuration wizard.
+
+#### Scenario: User reviews updated README.md or docs/documentation.md
+- **WHEN** the user reads `README.md` or `docs/documentation.md`
+- **THEN** they find:
+  - Explanations of `AGENT_THINKING_LEVEL` and how different levels map to backend implementations (OpenAI reasoning effort, Ollama think parameters).
+  - Explanations and visual examples of the live reasoning stream formatting in the terminal.
+  - Instructions on using `/agent --configure` or `/agent -c` to update their local backend settings, endpoints, and variables interactively.
