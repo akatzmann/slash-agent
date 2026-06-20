@@ -339,9 +339,9 @@ except Exception:
     echo ""
     echo "Select Agent thinking / reasoning level:"
     echo "  [1] Off (default) — recommended for standard models"
-    echo "  [2] Low           — for o1/o3 reasoning models (reasoning_effort=low)"
-    echo "  [3] Medium        — for o1/o3 reasoning models (reasoning_effort=medium)"
-    echo "  [4] High          — for o1/o3 reasoning models (reasoning_effort=high)"
+    echo "  [2] Low           — for GPT-5/o1/o3 reasoning models (reasoning_effort=low)"
+    echo "  [3] Medium        — for GPT-5/o1/o3 reasoning models (reasoning_effort=medium)"
+    echo "  [4] High          — for GPT-5/o1/o3 reasoning models (reasoning_effort=high)"
     
     THINKING_DEFAULT="1"
     if [ "$AGENT_THINKING_LEVEL" = "low" ]; then THINKING_DEFAULT="2"; fi
