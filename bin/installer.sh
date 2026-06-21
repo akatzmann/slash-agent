@@ -109,23 +109,85 @@ if [ "$FORCE_CONFIGURE" = false ]; then
 fi
 
 # 4. Interactive LLM Backend Configuration
-if [ -f ".env" ] && [ "$FORCE_CONFIGURE" = "false" ]; then
-    echo "Configuration file $INSTALL_DIR/.env already exists. Ensuring all backend variables are configured..."
+get_config_path() {
+    if [ -n "$SLASH_AGENT_CONFIG_FILE" ]; then
+        # Resolve to absolute path if possible
+        readlink -f "$SLASH_AGENT_CONFIG_FILE" 2>/dev/null || echo "$SLASH_AGENT_CONFIG_FILE"
+        return
+    fi
+    local xdg_config="${XDG_CONFIG_HOME:-$HOME/.config}"
+    if [ -n "$HOME" ]; then
+        echo "$xdg_config/slash-agent/env"
+    else
+        # Fallback to repo root .env
+        echo "$INSTALL_DIR/.env"
+    fi
+}
+
+migrate_legacy_config() {
+    local legacy_path="$INSTALL_DIR/.env"
+    local target_path="$CONFIG_PATH"
+
+    if [ -f "$legacy_path" ] && [ "$legacy_path" != "$target_path" ]; then
+        echo "Migrating legacy configuration from $legacy_path to $target_path..."
+        
+        local target_dir
+        target_dir=$(dirname "$target_path")
+        mkdir -p "$target_dir"
+        
+        if [ ! -f "$target_path" ]; then
+            touch "$target_path"
+            chmod 600 "$target_path"
+        fi
+
+        if [ ! -s "$target_path" ]; then
+            cp "$legacy_path" "$target_path"
+            chmod 600 "$target_path"
+        else
+            # Merge logic
+            while IFS= read -r line || [ -n "$line" ]; do
+                # Trim spaces
+                line=$(echo "$line" | xargs)
+                if [[ -z "$line" || "$line" == "#"* ]]; then
+                    continue
+                fi
+                if [[ "$line" == *"="* ]]; then
+                    local key
+                    key=$(echo "$line" | cut -d'=' -f1 | xargs)
+                    if ! grep -q "^$key=" "$target_path"; then
+                        echo "$line" >> "$target_path"
+                    fi
+                fi
+            done < "$legacy_path"
+        fi
+
+        rm -f "$legacy_path"
+        echo "Migration complete. Legacy configuration deleted."
+    fi
+}
+
+CONFIG_PATH=$(get_config_path)
+migrate_legacy_config
+
+if [ -f "$CONFIG_PATH" ] && [ "$FORCE_CONFIGURE" = "false" ]; then
+    echo "Configuration file $CONFIG_PATH already exists. Ensuring all backend variables are configured..."
     
     # Helper to check/append keys
     amend_env_val() {
         local key="$1"
         local val="$2"
-        if ! grep -q "^$key=" ".env"; then
-            echo "$key=\"$val\"" >> ".env"
+        if ! grep -q "^$key=" "$CONFIG_PATH"; then
+            mkdir -p "$(dirname "$CONFIG_PATH")"
+            [ ! -f "$CONFIG_PATH" ] && touch "$CONFIG_PATH" && chmod 600 "$CONFIG_PATH"
+            echo "$key=\"$val\"" >> "$CONFIG_PATH"
             echo "  Added missing configuration: $key=\"$val\""
         fi
     }
     
     # Infer backend if AGENT_BACKEND is missing
-    if ! grep -q "^AGENT_BACKEND=" ".env"; then
+    if ! grep -q "^AGENT_BACKEND=" "$CONFIG_PATH"; then
         existing_endpoint=""
-        existing_endpoint=$(grep "^AGENT_ENDPOINT=" ".env" | cut -d'=' -f2- | tr -d '"'\' || true)
+        existing_endpoint=$(grep "^AGENT_ENDPOINT=" "$CONFIG_PATH" | cut -d'=' -f2- | tr -d '"'\' || true)
         if [[ "$existing_endpoint" == *":11434"* ]]; then
             echo "Inferred legacy Ollama backend from existing endpoint."
             amend_env_val "AGENT_BACKEND" "ollama"
@@ -137,22 +199,21 @@ if [ -f ".env" ] && [ "$FORCE_CONFIGURE" = "false" ]; then
     
     # Ensure placeholder keys for API key variables are appended if missing
     for key in OPENAI_API_KEY AZURE_OPENAI_API_KEY AZURE_OPENAI_API_VERSION AGENT_THINKING_LEVEL; do
-        if ! grep -q "$key" ".env"; then
+        if ! grep -q "$key" "$CONFIG_PATH"; then
             if [ "$key" = "AZURE_OPENAI_API_VERSION" ]; then
-                echo "# AZURE_OPENAI_API_VERSION=\"2024-02-15-preview\"" >> ".env"
+                amend_env_val "AZURE_OPENAI_API_VERSION" "2025-04-01-preview"
             elif [ "$key" = "AGENT_THINKING_LEVEL" ]; then
-                echo "AGENT_THINKING_LEVEL=\"off\"" >> ".env"
-                echo "  Added missing configuration: AGENT_THINKING_LEVEL=\"off\""
+                amend_env_val "AGENT_THINKING_LEVEL" "off"
             else
-                echo "# $key=\"\"" >> ".env"
+                amend_env_val "$key" ""
             fi
         fi
     done
     echo "Configuration verification complete."
 else
     # Load current variables to pre-populate defaults for prompts
-    if [ -f ".env" ]; then
-        source ".env"
+    if [ -f "$CONFIG_PATH" ]; then
+        source "$CONFIG_PATH"
     fi
 
     prompt_user() {
@@ -193,24 +254,40 @@ except Exception:
 
     echo ""
     echo "Select LLM backend:"
-    echo "  [1] OpenAI (default) — gpt-5.4-nano or any OpenAI-compatible endpoint"
-    echo "  [2] Ollama            — local or remote Ollama instance"
+    echo "  [1] OpenAI            — gpt-5.4-nano or any OpenAI-compatible endpoint"
+    echo "  [2] Ollama (default)  — local or remote Ollama instance"
     echo "  [3] Azure OpenAI      — Microsoft Azure OpenAI Service"
     echo "  [4] Dummy             — offline mock (for testing)"
     
-    BACKEND_DEFAULT="1"
-    if [ "$AGENT_BACKEND" = "ollama" ]; then
-        BACKEND_DEFAULT="2"
+    BACKEND_DEFAULT="2"
+    if [ "$AGENT_BACKEND" = "openai" ]; then
+        BACKEND_DEFAULT="1"
     elif [ "$AGENT_BACKEND" = "azure_openai" ]; then
         BACKEND_DEFAULT="3"
     elif [ "$AGENT_BACKEND" = "dummy" ]; then
         BACKEND_DEFAULT="4"
+    elif [ "$AGENT_BACKEND" = "ollama" ]; then
+        BACKEND_DEFAULT="2"
     fi
     BACKEND_CHOICE=$(prompt_user "Backend [1-4, default: $BACKEND_DEFAULT]: " "$BACKEND_DEFAULT")
 
-    AGENT_BACKEND=""
-    AGENT_ENDPOINT=""
-    AGENT_MODEL=""
+    CHOSEN_BACKEND=""
+    if [ "$BACKEND_CHOICE" = "1" ]; then
+        CHOSEN_BACKEND="openai"
+    elif [ "$BACKEND_CHOICE" = "2" ]; then
+        CHOSEN_BACKEND="ollama"
+    elif [ "$BACKEND_CHOICE" = "3" ]; then
+        CHOSEN_BACKEND="azure_openai"
+    elif [ "$BACKEND_CHOICE" = "4" ]; then
+        CHOSEN_BACKEND="dummy"
+    fi
+
+    if [ "$CHOSEN_BACKEND" != "$AGENT_BACKEND" ]; then
+        AGENT_ENDPOINT=""
+        AGENT_MODEL=""
+    fi
+    AGENT_BACKEND="$CHOSEN_BACKEND"
+
     OPENAI_API_KEY_VAL=""
     AZURE_OPENAI_API_KEY_VAL=""
     AZURE_OPENAI_API_VERSION_VAL=""
@@ -329,7 +406,7 @@ except Exception:
         AGENT_ENDPOINT=$(prompt_user "Azure OpenAI endpoint URL [default: $AGENT_ENDPOINT]: " "$AGENT_ENDPOINT")
         AGENT_MODEL=$(prompt_user "Deployment/model name [default: ${AGENT_MODEL:-gpt-5.4-nano}]: " "${AGENT_MODEL:-gpt-5.4-nano}")
         AZURE_OPENAI_API_KEY_VAL=$(prompt_user "Azure OpenAI API key [default: $AZURE_OPENAI_API_KEY]: " "$AZURE_OPENAI_API_KEY")
-        AZURE_OPENAI_API_VERSION_VAL=$(prompt_user "API version [default: ${AZURE_OPENAI_API_VERSION:-2024-02-15-preview}]: " "${AZURE_OPENAI_API_VERSION:-2024-02-15-preview}")
+        AZURE_OPENAI_API_VERSION_VAL=$(prompt_user "API version [default: ${AZURE_OPENAI_API_VERSION:-2025-04-01-preview}]: " "${AZURE_OPENAI_API_VERSION:-2025-04-01-preview}")
 
     elif [ "$BACKEND_CHOICE" = "4" ]; then
         AGENT_BACKEND="dummy"
@@ -364,7 +441,9 @@ except Exception:
         AGENT_THINKING_LEVEL_VAL="high"
     fi
 
-    echo "Saving configuration to $INSTALL_DIR/.env..."
+    echo "Saving configuration to $CONFIG_PATH..."
+    mkdir -p "$(dirname "$CONFIG_PATH")"
+    [ ! -f "$CONFIG_PATH" ] && touch "$CONFIG_PATH" && chmod 600 "$CONFIG_PATH"
     {
         echo "AGENT_BACKEND=\"$AGENT_BACKEND\""
         [ -n "$AGENT_ENDPOINT" ] && echo "AGENT_ENDPOINT=\"$AGENT_ENDPOINT\""
@@ -373,7 +452,8 @@ except Exception:
         [ -n "$AZURE_OPENAI_API_KEY_VAL" ] && echo "AZURE_OPENAI_API_KEY=\"$AZURE_OPENAI_API_KEY_VAL\""
         [ -n "$AZURE_OPENAI_API_VERSION_VAL" ] && echo "AZURE_OPENAI_API_VERSION=\"$AZURE_OPENAI_API_VERSION_VAL\""
         echo "AGENT_THINKING_LEVEL=\"$AGENT_THINKING_LEVEL_VAL\""
-    } > ".env"
+    } > "$CONFIG_PATH"
+    chmod 600 "$CONFIG_PATH"
     echo "Configuration saved successfully."
 fi
 # 5. Idempotent Shell Profile Registration

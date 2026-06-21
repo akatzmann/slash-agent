@@ -6,11 +6,11 @@ Enables slash-agent to configure and run using different LLM backends (OpenAI, A
 ## Requirements
 
 ### Requirement: Configurable Backend Selection
-The agent system SHALL support choosing the LLM backend dynamically via the environment variable `AGENT_BACKEND`. Supported backends SHALL include `openai`, `ollama`, `azure_openai`, and `dummy`. If `AGENT_BACKEND` is not set, it SHALL default to `openai`.
+The agent system SHALL support choosing the LLM backend dynamically via the environment variable `AGENT_BACKEND`. Supported backends SHALL include `openai`, `ollama`, `azure_openai`, and `dummy`. If `AGENT_BACKEND` is not set, it SHALL default to `ollama`.
 
-#### Scenario: Backend defaulting to openai
+#### Scenario: Backend defaulting to ollama
 - **WHEN** the agent starts and `AGENT_BACKEND` is not set
-- **THEN** the agent initializes using the generic OpenAI backend.
+- **THEN** the agent initializes using the Ollama backend.
 
 #### Scenario: Ollama backend selection
 - **WHEN** the agent starts and `AGENT_BACKEND` is set to `ollama`
@@ -24,6 +24,6 @@ The agent system SHALL configure the chosen backend using the environment variab
 - For `ollama`: `AGENT_ENDPOINT` defaults to `http://127.0.0.1:11434`, and `AGENT_MODEL` defaults to `gemma4:latest`.
 - For `azure_openai`: `AGENT_MODEL` defaults to `gpt-5.4-nano`.
 
-#### Scenario: Defaulting configurations for OpenAI
-- **WHEN** the agent starts with `AGENT_BACKEND` set to `openai` (or unset), and no model/endpoint environment variables are configured
-- **THEN** the agent defaults to using the `gpt-5.4-nano` model with OpenAI standard client configuration.
+#### Scenario: Defaulting configurations for Ollama
+- **WHEN** the agent starts with `AGENT_BACKEND` set to `ollama` (or unset), and no model/endpoint environment variables are configured
+- **THEN** the agent defaults to using the `gemma4:latest` model with `http://127.0.0.1:11434` endpoint.

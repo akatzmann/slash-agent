@@ -109,13 +109,13 @@ Before prompting the user (or deciding to auto-confirm), the system evaluates th
 - **`Critical`** (Red): Destructive file operations, administrative commands, or remote scripts (e.g. `rm -rf`, `sudo`). Requires a `risk_description` and always forces manual confirmation unless overridden by `--unsafe-yes`.
 
 ### Configuration Environment Variables
-Configure these variables in your `.env` file, shell profile, or `~/.bashrc`:
-- `AGENT_BACKEND`: LLM backend engine. Supported options: `openai` (default), `ollama`, `azure_openai`, `dummy`.
-- `AGENT_MODEL`: Model name used by the LLM backend. Defaults to `gpt-5.4-nano` for `openai`, `gemma4:latest` for `ollama`, and `gpt-5.4-nano` for `azure_openai`.
-- `AGENT_ENDPOINT`: Host base URL endpoint. Defaults: official OpenAI API endpoint for `openai`, `http://127.0.0.1:11434` for `ollama`.
-- `OPENAI_API_KEY`: API key for the default `openai` backend.
+Configure these variables in your configuration file (defaulting to `~/.config/slash-agent/env`), shell profile, or `~/.bashrc`. You can also override the default configuration path by setting the `SLASH_AGENT_CONFIG_FILE` environment variable.
+- `AGENT_BACKEND`: LLM backend engine. Supported options: `ollama` (default), `openai`, `azure_openai`, `dummy`.
+- `AGENT_MODEL`: Model name used by the LLM backend. Defaults to `gemma4:latest` for `ollama`, `gpt-5.4-nano` for `openai`, and `gpt-5.4-nano` for `azure_openai`.
+- `AGENT_ENDPOINT`: Host base URL endpoint. Defaults: `http://127.0.0.1:11434` for `ollama`, official OpenAI API endpoint for `openai`.
+- `OPENAI_API_KEY`: API key for the `openai` backend.
 - `AZURE_OPENAI_API_KEY`: API key for the `azure_openai` backend.
-- `AZURE_OPENAI_API_VERSION`: API version for the `azure_openai` backend (defaults to `2024-02-15-preview`).
+- `AZURE_OPENAI_API_VERSION`: API version for the `azure_openai` backend (defaults to `2025-04-01-preview`).
 - `AGENT_TMUX_LINES`: Lines captured from tmux scrollback (defaults to `50`).
 - `AGENT_HISTORY_COMMANDS`: Number of commands captured from history fallback (defaults to `20`).
 - `AGENT_THINKING_LEVEL`: Specifies the thinking/reasoning depth level. Valid options are `off` (default), `low`, `medium`, and `high`. Maps to `reasoning_effort` for OpenAI models and toggles thinking options (`think=True`) in Ollama backends (e.g., DeepSeek-R1).

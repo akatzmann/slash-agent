@@ -133,20 +133,20 @@ However, the tool is **100% compatible with WSL2 (Windows Subsystem for Linux)**
 
 ## ⚙️ Configuration
 
-Configure the LLM backend, endpoint, model, and capture settings in your `.env` file or shell profile:
+Configure the LLM backend, endpoint, model, and capture settings in your configuration file (located at `~/.config/slash-agent/env`) or shell profile. You can also override the configuration file path by exporting the `SLASH_AGENT_CONFIG_FILE` environment variable.
 
 ```bash
-# LLM Backend: openai (default), ollama, azure_openai, dummy
-export AGENT_BACKEND="openai"
+# LLM Backend: ollama (default), openai, azure_openai, dummy
+export AGENT_BACKEND="ollama"
 
-# Model name (Defaults: gpt-5.4-nano for openai, gemma4:latest for ollama)
-export AGENT_MODEL="gpt-5.4-nano"
+# Model name (Defaults: gemma4:latest for ollama, gpt-5.4-nano for openai)
+export AGENT_MODEL="gemma4:latest"
 
-# API endpoint base URL (defaults to official OpenAI API endpoint)
-export AGENT_ENDPOINT=""
+# API endpoint base URL (defaults to http://127.0.0.1:11434 for ollama)
+export AGENT_ENDPOINT="http://127.0.0.1:11434"
 
-# OpenAI API Key (required for default OpenAI backend)
-export OPENAI_API_KEY="your-api-key-here"
+# OpenAI API Key (required if AGENT_BACKEND="openai")
+export OPENAI_API_KEY=""
 
 # Context extraction settings
 export AGENT_TMUX_LINES=50          # Lines captured from active tmux scrollback
@@ -156,11 +156,11 @@ export AGENT_HISTORY_COMMANDS=20    # Commands captured from history fallback
 export AGENT_THINKING_LEVEL="off"   # Thinking level: off (default), low, medium, high (for reasoning models)
 ```
 
-For a full list of configuration variables (e.g., Azure OpenAI variables), see the [.env.template](.env.template) file.
+For a full list of configuration variables (e.g., Azure OpenAI variables), see the [.env.template](.env.template) template file.
 
 ### 🔄 Re-configuration
 
-Instead of manually editing the `.env` file, you can re-run the interactive configuration prompts at any time:
+Instead of manually editing the configuration file, you can re-run the interactive configuration prompts at any time:
 ```bash
 /agent --configure
 # or using the shortcut

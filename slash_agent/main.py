@@ -4,6 +4,26 @@ import sys
 import os
 import re
 
+def get_config_path() -> str:
+    """Resolve the configuration file path, respecting overrides and XDG specs."""
+    custom_path = os.environ.get("SLASH_AGENT_CONFIG_FILE")
+    if custom_path:
+        return os.path.abspath(custom_path)
+
+    xdg_config = os.environ.get("XDG_CONFIG_HOME")
+    if xdg_config:
+        config_dir = os.path.join(xdg_config, "slash-agent")
+    else:
+        home = os.environ.get("HOME")
+        if home:
+            config_dir = os.path.join(home, ".config", "slash-agent")
+        else:
+            # Fallback to repo root if HOME is undefined
+            repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            return os.path.join(repo_root, ".env")
+
+    return os.path.join(config_dir, "env")
+
 def load_dotenv(env_path: str):
     """Manually parse .env file to load variables into os.environ."""
     if os.path.exists(env_path):
@@ -19,9 +39,87 @@ def load_dotenv(env_path: str):
                     if k not in os.environ:
                         os.environ[k] = v
 
-# Load local .env config if present
+def migrate_legacy_config(repo_root: str, target_path: str):
+    """Migrate legacy repo-root .env to target_path if legacy exists (and merge if both exist)."""
+    legacy_path = os.path.join(repo_root, ".env")
+    if not os.path.exists(legacy_path):
+        return
+
+    # Check if legacy path is actually same as target path (prevent self-loop)
+    if os.path.abspath(legacy_path) == os.path.abspath(target_path):
+        return
+
+    # Read legacy env
+    legacy_vars = {}
+    with open(legacy_path, "r", errors="ignore") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" in line:
+                k, v = line.split("=", 1)
+                k = k.strip()
+                v = v.strip().strip("'\"")
+                legacy_vars[k] = v
+
+    # If legacy is empty, just delete it
+    if not legacy_vars:
+        try:
+            os.remove(legacy_path)
+        except Exception:
+            pass
+        return
+
+    # Read existing target env if it exists
+    target_vars = {}
+    if os.path.exists(target_path):
+        with open(target_path, "r", errors="ignore") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if "=" in line:
+                    k, v = line.split("=", 1)
+                    k = k.strip()
+                    v = v.strip().strip("'\"")
+                    target_vars[k] = v
+
+    # Merge: keep existing target vars, fill in missing from legacy
+    merged = False
+    for k, v in legacy_vars.items():
+        if k not in target_vars:
+            target_vars[k] = v
+            merged = True
+
+    # Save to target path
+    if merged or not os.path.exists(target_path):
+        os.makedirs(os.path.dirname(target_path), exist_ok=True)
+        try:
+            fd = os.open(target_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w") as f:
+                for k, v in target_vars.items():
+                    f.write(f'{k}="{v}"\n')
+        except Exception:
+            with open(target_path, "w") as f:
+                for k, v in target_vars.items():
+                    f.write(f'{k}="{v}"\n')
+            try:
+                os.chmod(target_path, 0o600)
+            except Exception:
+                pass
+
+    # Delete legacy .env
+    try:
+        os.remove(legacy_path)
+    except Exception:
+        pass
+
+# Migrate and load configuration
 repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-load_dotenv(os.path.join(repo_root, ".env"))
+config_path = get_config_path()
+migrate_legacy_config(repo_root, config_path)
+load_dotenv(config_path)
+
 
 def sanitize_proxy_env():
     """Sanitize proxy environment variables for compatibility and sync casing."""
@@ -161,7 +259,7 @@ async def main_async():
         )
         
     # Retrieve model, endpoint, backend, and behavior configurations from environment variables
-    backend_type = os.environ.get("AGENT_BACKEND", "openai").lower()
+    backend_type = os.environ.get("AGENT_BACKEND", "ollama").lower()
     endpoint = os.environ.get("AGENT_ENDPOINT", "")
     model = os.environ.get("AGENT_MODEL", "")
     api_key = os.environ.get("OPENAI_API_KEY", "")
@@ -195,7 +293,7 @@ async def main_async():
             from openai import AsyncAzureOpenAI
             from py_agent_core.backends.azure_openai import AzureOpenAIBackend
             azure_api_key = os.environ.get("AZURE_OPENAI_API_KEY", api_key)
-            azure_api_version = os.environ.get("AZURE_OPENAI_API_VERSION", "2024-02-15-preview")
+            azure_api_version = os.environ.get("AZURE_OPENAI_API_VERSION", "2025-04-01-preview")
             resolved_model = model or "gpt-5.4-nano"
             client = AsyncAzureOpenAI(
                 api_key=azure_api_key,
