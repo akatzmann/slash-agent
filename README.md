@@ -15,6 +15,24 @@
 
 ---
 
+### 🔍 The 10-Second Reality Check
+
+| 🟢 What it IS | 🔴 What it IS NOT |
+| :--- | :--- |
+| **⚡ A zero-latency terminal utility.** It remains completely dormant and consumes exactly 0MB of RAM until you type `/agent` or `agent`. | **🕵️‍♂️ A resident background daemon.** It does not track your keystrokes in real-time, run background analytics, or drain your battery. |
+| **🪟 A screen-aware scraper.** It instantly pulls the last 50–100 lines of your active shell history or `tmux` scrollback to diagnose the error that just occurred. | **🏗️ A project architect.** It is not designed to map out massive 50-file repository architectures or handle monolithic code refactors. |
+| **🛠️ An interactive shell executor.** It feeds commands into a real pseudo-terminal (PTY) and asks for live user validation before executing. | **📋 A basic copy-paster.** It doesn't just vomit Markdown code blocks that leave you manually highlighting, copying, and running text. |
+| **🔀 A state-synchronizer.** It bridges the gap between subshells, allowing environment exports and directory changes (`cd`) to persist in your parent shell. | **🏞️ A sandboxed IDE.** It modifies your actual live environment; it is not an isolated, safe-play sandbox. |
+
+### 🔒 The Privacy-First Advantage
+
+Unlike web interfaces or proprietary commercial wrappers that silently pipe your telemetry to corporate servers, **slash-agent** puts you in total control of your data flow:
+
+* **🔐 Bring Your Own Keys (BYOK):** It talks directly to LLM providers via standard API endpoints (OpenAI, Azure OpenAI, etc.). No middleman server intercepts your terminal logs or source code.
+* **🏠 100% Air-Gapped / Offline Capable:** By pointing the backend API configuration to a local Ollama instance, your terminal history, source code, and error tracebacks never leave your physical machine.
+
+---
+
 ## ⚡ Quick Start (5-Second Install)
 
 Get up and running instantly. Run the quick installer script in your shell (supports Bash, Zsh, Ksh, and Fish):
@@ -76,6 +94,24 @@ I have installed the missing 'dotenv' package and verified that the build now pa
 * 📦 **Dependency Resolution:** Missing package imports? The agent reads the import error, installs the package, and verifies the build.
 * 💻 **Quick Scripting & Automation:** Ask the agent to generate helper scripts, configure development environments, or perform regex logs processing on the fly.
 * ⚙️ **System Configuration:** Easily set up local databases, systemd services, or configuration files without looking up command flags.
+
+---
+
+## 📊 Feature Comparison Matrix
+
+| Capability | 🌐 Standard Web UI <br> (ChatGPT / Claude) | 💻 Shell Copilots <br> (Copilot CLI / Gh-Cli) | 🧰 Project Agents <br> (Aider / Claude Code) | ⚡ slash-agent |
+| :--- | :--- | :--- | :--- | :--- |
+| **🧠 How it Gets Context** | ⌨️ Manual copy-paste | 📝 You type a prompt | 📂 Reads entire git repo | 🖥️ Scrapes active terminal scrollback |
+| **🚀 Idle System Overhead** | 🚫 None (Browser) | 🚫 None (On-Demand) | ⚠️ High (Heavy runtimes) | ⚡ Zero (Dormant shell function) |
+| **🛠️ Command Execution** | ❌ None (Read-only) | 🔄 Prints text to run | 🤖 Autonomous file edits | 🤝 Interactive PTY Loop (Run/Edit/Steer) |
+| **🔗 Parent Shell Sync** | ❌ No | ❌ No | ❌ No | ✅ Yes (`cd` & `export` persist) |
+| **🔒 Local Privacy Support** | ❌ No (Cloud only) | ❌ No (Cloud only) | ✅ Yes (Configurable) | ✅ Yes (Full Ollama/Local support) |
+| **🎯 Primary Superpower** | Abstract logic & algorithmic brainstorming | Quick syntax lookups <br> (e.g., *"how to untar file"*) | Large autonomous feature builds & massive refactors | Instant post-crash fixes & rapid terminal adjustments |
+
+> [!TIP]
+> **Developer Rule of Thumb:**
+> * Use **Aider** or **Claude Code** when you are entering a deep-work coding session to build an entire feature.
+> * Keep **slash-agent** mapped in your `.zshrc` / `.bashrc` / `.config/fish` as an instant emergency lever for when your test suite or deployment pipeline randomly blows up in your face.
 
 ---
 
