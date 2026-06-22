@@ -198,7 +198,7 @@ if [ -f "$CONFIG_PATH" ] && [ "$FORCE_CONFIGURE" = "false" ]; then
     fi
     
     # Ensure placeholder keys for API key variables are appended if missing
-    for key in OPENAI_API_KEY AZURE_OPENAI_API_KEY AZURE_OPENAI_API_VERSION AGENT_THINKING_LEVEL; do
+    for key in OPENAI_API_KEY AZURE_OPENAI_API_KEY AZURE_OPENAI_API_VERSION AGENT_THINKING_LEVEL AGENT_TEMPERATURE AGENT_TOP_P; do
         if ! grep -q "$key" "$CONFIG_PATH"; then
             if [ "$key" = "AZURE_OPENAI_API_VERSION" ]; then
                 amend_env_val "AZURE_OPENAI_API_VERSION" "2025-04-01-preview"
@@ -452,6 +452,8 @@ except Exception:
         [ -n "$AZURE_OPENAI_API_KEY_VAL" ] && echo "AZURE_OPENAI_API_KEY=\"$AZURE_OPENAI_API_KEY_VAL\""
         [ -n "$AZURE_OPENAI_API_VERSION_VAL" ] && echo "AZURE_OPENAI_API_VERSION=\"$AZURE_OPENAI_API_VERSION_VAL\""
         echo "AGENT_THINKING_LEVEL=\"$AGENT_THINKING_LEVEL_VAL\""
+        echo "AGENT_TEMPERATURE=\"$AGENT_TEMPERATURE\""
+        echo "AGENT_TOP_P=\"$AGENT_TOP_P\""
     } > "$CONFIG_PATH"
     chmod 600 "$CONFIG_PATH"
     echo "Configuration saved successfully."

@@ -1,22 +1,4 @@
-# multi-backend-support Specification
-
-## Purpose
-Enables slash-agent to configure and run using different LLM backends (OpenAI, Azure OpenAI, Ollama, and offline Dummy mode) and custom models/endpoints dynamically based on environment configuration.
-
-## Requirements
-
-### Requirement: Configurable Backend Selection
-The agent system SHALL support choosing the LLM backend dynamically via the environment variable `AGENT_BACKEND`. Supported backends SHALL include `openai`, `ollama`, `azure_openai`, and `dummy`. If `AGENT_BACKEND` is not set, it SHALL default to `ollama`.
-
-#### Scenario: Backend defaulting to ollama
-- **WHEN** the agent starts and `AGENT_BACKEND` is not set
-- **THEN** the agent initializes using the Ollama backend.
-
-#### Scenario: Ollama backend selection
-- **WHEN** the agent starts and `AGENT_BACKEND` is set to `ollama`
-- **THEN** the agent initializes using the Ollama backend.
-
----
+## MODIFIED Requirements
 
 ### Requirement: Flexible Environment Configuration
 The agent system SHALL configure the chosen backend using the environment variables `AGENT_ENDPOINT`, `AGENT_MODEL`, `AGENT_TEMPERATURE`, `AGENT_TOP_P`, and other backend-specific variables (like `OPENAI_API_KEY`, `AZURE_OPENAI_API_KEY`). If no endpoint or model is specified:

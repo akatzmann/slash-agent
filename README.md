@@ -190,6 +190,10 @@ export AGENT_HISTORY_COMMANDS=20    # Commands captured from history fallback
 
 # Thinking / reasoning mode settings
 export AGENT_THINKING_LEVEL="off"   # Thinking level: off (default), low, medium, high (for reasoning models)
+
+# Sampling parameter settings (optional)
+# export AGENT_TEMPERATURE="0.2"   # LLM temperature: float (e.g. 0.2), blank/unset for default. (OpenAI's o-series reasoning models do not support custom temperature)
+# export AGENT_TOP_P="0.9"          # LLM top_p (nucleus sampling): float (e.g. 0.9), blank/unset for default.
 ```
 
 For a full list of configuration variables (e.g., Azure OpenAI variables), see the [.env.template](.env.template) template file.

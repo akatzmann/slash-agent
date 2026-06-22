@@ -265,6 +265,24 @@ async def main_async():
     api_key = os.environ.get("OPENAI_API_KEY", "")
     thinking_level = os.environ.get("AGENT_THINKING_LEVEL", "off").lower()
 
+    # Parse sampling parameters
+    temp_env = os.environ.get("AGENT_TEMPERATURE", "").strip()
+    top_p_env = os.environ.get("AGENT_TOP_P", "").strip()
+    
+    temperature = None
+    if temp_env:
+        try:
+            temperature = float(temp_env)
+        except ValueError:
+            print(f"\033[1;33m[Warning] Invalid AGENT_TEMPERATURE '{temp_env}'. Ignoring.\033[0m")
+            
+    top_p = None
+    if top_p_env:
+        try:
+            top_p = float(top_p_env)
+        except ValueError:
+            print(f"\033[1;33m[Warning] Invalid AGENT_TOP_P '{top_p_env}'. Ignoring.\033[0m")
+
     print(f"\033[1;34m[slash-agent] Using backend '{backend_type}'...\033[0m")
 
     try:
@@ -278,7 +296,7 @@ async def main_async():
             if api_key:
                 client_kwargs["api_key"] = api_key
             client = AsyncOpenAI(**client_kwargs)
-            backend = OpenAIBackend(client=client, model=resolved_model)
+            backend = OpenAIBackend(client=client, model=resolved_model, temperature=temperature, top_p=top_p)
             print(f"\033[1;34m[slash-agent] Model '{resolved_model}' via OpenAI-compatible endpoint.\033[0m")
 
         elif backend_type == "ollama":
@@ -286,7 +304,7 @@ async def main_async():
             from py_agent_core.backends.ollama import OllamaBackend
             resolved_endpoint = endpoint or "http://127.0.0.1:11434"
             resolved_model = model or "gemma4:latest"
-            backend = OllamaBackend(client=AsyncClient(host=resolved_endpoint), model=resolved_model)
+            backend = OllamaBackend(client=AsyncClient(host=resolved_endpoint), model=resolved_model, temperature=temperature, top_p=top_p)
             print(f"\033[1;34m[slash-agent] Model '{resolved_model}' at '{resolved_endpoint}' via Ollama.\033[0m")
 
         elif backend_type == "azure_openai":
@@ -300,7 +318,7 @@ async def main_async():
                 api_version=azure_api_version,
                 azure_endpoint=endpoint,
             )
-            backend = AzureOpenAIBackend(client=client, model=resolved_model)
+            backend = AzureOpenAIBackend(client=client, model=resolved_model, temperature=temperature, top_p=top_p)
             print(f"\033[1;34m[slash-agent] Model '{resolved_model}' via Azure OpenAI.\033[0m")
 
         elif backend_type == "dummy":
