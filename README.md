@@ -60,6 +60,7 @@ curl -fsSL https://raw.githubusercontent.com/akatzmann/slash-agent/master/bin/in
   * **`e` (edit):** Inline edit the command before running it.
   * **`c` (comment):** Type natural language guidance back to the agent (e.g. *"Use yarn instead of npm"*).
 * **🛡️ Dry-run & Auto-confirm Modes:** Preview agent actions safely with `-n` / `--dry-run`, or run fully unattended with `-y` / `--yes`.
+* **🧩 Agent Skills:** Drop a `SKILL.md` into `.agent/skills/`, `.claude/skills/`, `.github/skills/`, or global paths like `~/.gemini/config/skills/` and the agent automatically discovers and uses it. Compatible with Claude, Copilot, Gemini, and other standard skill formats. See [`docs/skills-guide.md`](docs/skills-guide.md) for details.
 
 ---
 

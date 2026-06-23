@@ -165,9 +165,105 @@ sanitize_proxy_env()
 # Save starting environment for diff sync on exit (after loading .env and sanitization)
 STARTING_ENV = os.environ.copy()
 
+def parse_skill_metadata(skill_file: str, fallback_name: str) -> tuple[str, str]:
+    """Parse YAML frontmatter of SKILL.md using a regex-based parser, falling back gracefully on error."""
+    name = fallback_name
+    desc = f"Custom skill from {fallback_name}"
+    
+    try:
+        with open(skill_file, "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read()
+            
+        # Match YAML frontmatter between --- and --- at the start of the file
+        match = re.match(r"^---\s*\n(.*?)\n---\s*\n", content, re.DOTALL)
+        if match:
+            yaml_block = match.group(1)
+            for line in yaml_block.splitlines():
+                # Skip indented lines (nested keys)
+                if line.startswith(" ") or line.startswith("\t"):
+                    continue
+                line_stripped = line.strip()
+                if not line_stripped or line_stripped.startswith("#"):
+                    continue
+                if ":" in line_stripped:
+                    k, v = line_stripped.split(":", 1)
+                    k = k.strip().lower()
+                    v = v.strip().strip("'\"")
+                    if k == "name" and v:
+                        name = v
+                    elif k == "description" and v:
+                        desc = v
+    except Exception:
+        pass
+        
+    return name, desc
+
+def discover_skills() -> list[dict[str, str]]:
+    """Scan standard global and project-local paths for SKILL.md files and return deduplicated entries."""
+    global_dirs = [
+        "~/.config/slash-agent/skills",
+        "~/.claude/skills",
+        "~/.copilot/skills",
+        "~/.gemini/config/skills",
+    ]
+    local_dirs = [
+        ".agent/skills",
+        ".claude/skills",
+        ".github/skills"
+    ]
+    
+    dirs_to_scan = []
+    # Scan global paths first, so local paths override on name collisions
+    for path in global_dirs:
+        abs_path = os.path.abspath(os.path.expanduser(path))
+        dirs_to_scan.append((abs_path, "global"))
+        
+    for path in local_dirs:
+        abs_path = os.path.abspath(os.path.join(os.getcwd(), path))
+        dirs_to_scan.append((abs_path, "local"))
+        
+    skills = {}
+    
+    for scan_dir, source in dirs_to_scan:
+        if not os.path.isdir(scan_dir):
+            continue
+        try:
+            for item in os.listdir(scan_dir):
+                item_path = os.path.join(scan_dir, item)
+                if os.path.isdir(item_path):
+                    skill_file = os.path.join(item_path, "SKILL.md")
+                    if os.path.isfile(skill_file):
+                        name, desc = parse_skill_metadata(skill_file, item)
+                        # Project-local overrides global due to dict update order
+                        skills[name] = {
+                            "name": name,
+                            "description": desc,
+                            "path": skill_file,
+                            "source": source
+                        }
+        except Exception:
+            pass
+            
+    return list(skills.values())
+
+def build_skills_prompt(skills: list[dict[str, str]]) -> str:
+    """Construct the system prompt block for available agent skills."""
+    if not skills:
+        return ""
+        
+    prompt_lines = [
+        "\n# Available Agent Skills",
+        "The following specialized skills are available to you. If a task requires one of these skills, you MUST read its detailed instructions first using the `read_skill_instructions` tool, then follow the steps exactly:\n"
+    ]
+    for skill in skills:
+        prompt_lines.append(f"* **{skill['name']}**: {skill['description']}")
+        prompt_lines.append(f"  - Instructions path: {skill['path']}\n")
+        
+    return "\n".join(prompt_lines)
+
 # Import agent and tools (ensuring tools capture the sanitized os.environ in session_state)
 from py_agent_core.agent import Agent
-from slash_agent.tools import execute_command, request_user_input, session_state
+from slash_agent.tools import execute_command, request_user_input, read_skill_instructions, session_state
 
 def get_env_diff(shell: str = "bash") -> str:
     """Computes the difference between starting env and current session state env,
@@ -349,11 +445,16 @@ async def main_async():
         "   - Upon finishing, output a concise markdown summary explaining your actions and outcomes."
     )
     
+    # Scan and append agent skills context
+    skills = discover_skills()
+    skills_prompt = build_skills_prompt(skills)
+    system_prompt += skills_prompt
+    
     agent = Agent(
         backend=backend,
         initial_state={
             "systemPrompt": system_prompt,
-            "tools": [execute_command, request_user_input],
+            "tools": [execute_command, request_user_input, read_skill_instructions],
             "thinkingLevel": thinking_level
         }
     )

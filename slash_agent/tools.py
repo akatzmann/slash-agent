@@ -363,3 +363,29 @@ async def request_user_input(prompt: str) -> str:
         # Propagate KeyboardInterrupt to cleanly abort agent execution
         raise KeyboardInterrupt
 
+@tool
+async def read_skill_instructions(skill_path: str) -> str:
+    """Reads the detailed instructions for a specific agent skill from the provided path.
+    
+    This is a read-only tool and executes silently without prompting the user for confirmation.
+    
+    Args:
+        skill_path: The absolute filesystem path to the SKILL.md file.
+    """
+    try:
+        # Check that path exists and is a file
+        if not os.path.isfile(skill_path):
+            return f"Error: Skill file not found at '{skill_path}'."
+            
+        # Ensure it is a SKILL.md file for safety/security
+        if not os.path.basename(skill_path) == "SKILL.md":
+            return "Error: Access denied. Only SKILL.md files can be read using this tool."
+            
+        with open(skill_path, "r", encoding="utf-8", errors="ignore") as f:
+            content = f.read()
+            
+        return content
+    except Exception as e:
+        return f"Error reading skill file: {str(e)}"
+
+
