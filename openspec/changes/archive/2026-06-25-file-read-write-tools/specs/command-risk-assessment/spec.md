@@ -1,27 +1,6 @@
-# command-risk-assessment Specification
+# command-risk-assessment Delta Spec
 
-## Purpose
-Enforces execution safety boundaries by classifying commands according to risk, overriding LLM risk assessments for known destructive commands, color-coding risk displays, and halting standard auto-confirm mode on critical operations.
-
-## Requirements
-
-### Requirement: Tool Risk Parameters
-The system SHALL accept `risk_level` and `risk_description` parameters on the `execute_command` tool. The `risk_description` parameter SHALL be optional for `safe` and `low` risk commands, but SHALL be required for `moderate` and `critical` commands.
-
-#### Scenario: Tool receives risk parameters
-- **WHEN** the agent calls the `execute_command` tool
-- **THEN** it accepts and processes the `risk_level` and `risk_description` strings.
-
----
-
-### Requirement: Python Safety Guardrails
-The system SHALL override the agent's risk classification to `critical` if the proposed command matches high-risk administrative or filesystem destructive patterns.
-
-#### Scenario: Dangerous command pattern override
-- **WHEN** the command contains patterns like `rm -rf` or `sudo `
-- **THEN** the system sets `risk_level` to `critical` and assigns an administrative warning as `risk_description` regardless of the LLM's input.
-
----
+## MODIFIED Requirements
 
 ### Requirement: Auto-Confirm Safety Boundaries
 The system SHALL apply a unified auto-confirm policy across both shell command execution and file operations (`read_file`, `write_file`, `edit_file`):
@@ -42,14 +21,7 @@ The system SHALL apply a unified auto-confirm policy across both shell command e
 
 ---
 
-### Requirement: Color-Coded Risk Display
-The system SHALL print the risk level and description below the proposed command in the confirmation prompt using safety-category-specific ANSI colors.
-
-#### Scenario: Prompting user with risk level
-- **WHEN** prompting the user for confirmation
-- **THEN** the system displays the colored risk category (Safe in Green, Low in Cyan, Moderate in Yellow, Critical in Red) followed by the risk description.
-
----
+## ADDED Requirements
 
 ### Requirement: --unsafe-yes Countdown Warning for Critical Operations
 When `--unsafe-yes` is active and a `critical`-classified operation (shell command, file read, file write, or file edit) is about to proceed, the system SHALL display a prominent warning and count down before executing. The countdown duration SHALL default to 5 seconds and SHALL be configurable via the `SLASH_AGENT_UNSAFE_DELAY` environment variable (non-negative integer; invalid values fall back to the default). The countdown SHALL be interruptible via Ctrl+C.
@@ -66,8 +38,6 @@ When `--unsafe-yes` is active and a `critical`-classified operation (shell comma
 - **WHEN** the countdown is in progress and the user presses Ctrl+C
 - **THEN** the operation is aborted and an abort message is displayed without running the command or modifying any file
 
----
-
 ### Requirement: Python Safety Guardrails for File Operations
 The system SHALL maintain a hardcoded `SENSITIVE_READ_PATHS` list for `read_file` operations and a (superset) `SENSITIVE_WRITE_PATHS` list for `write_file` and `edit_file` operations. Paths SHALL be resolved via `os.path.realpath()` before matching. When the resolved path matches any entry, the system SHALL override the LLM-supplied risk to `critical`, analogous to the existing command pattern overrides for shell execution.
 
@@ -78,4 +48,3 @@ The system SHALL maintain a hardcoded `SENSITIVE_READ_PATHS` list for `read_file
 #### Scenario: Sensitive write path forced to critical
 - **WHEN** `write_file` or `edit_file` is called with a path resolving to a system location (e.g. `/etc/hosts`, `/usr/bin/mybin`)
 - **THEN** the system overrides `risk_level` to `critical` regardless of the LLM's input
-

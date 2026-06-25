@@ -253,7 +253,7 @@ def build_skills_prompt(skills: list[dict[str, str]]) -> str:
         
     prompt_lines = [
         "\n# Available Agent Skills",
-        "The following specialized skills are available to you. If a task requires one of these skills, you MUST read its detailed instructions first using the `read_skill_instructions` tool, then follow the steps exactly:\n"
+        "The following specialized skills are available to you. If a task can be addressed by one of these skills, you MUST prioritize using the skill and its instructions over generic tool execution (like running custom shell commands or writing ad-hoc scripts). If a task requires one of these skills, you MUST read its detailed instructions first using the `read_skill_instructions` tool, then follow the steps exactly:\n"
     ]
     for skill in skills:
         prompt_lines.append(f"* **{skill['name']}**: {skill['description']}")
@@ -263,7 +263,7 @@ def build_skills_prompt(skills: list[dict[str, str]]) -> str:
 
 # Import agent and tools (ensuring tools capture the sanitized os.environ in session_state)
 from py_agent_core.agent import Agent
-from slash_agent.tools import execute_command, request_user_input, read_skill_instructions, session_state
+from slash_agent.tools import execute_command, request_user_input, read_skill_instructions, read_file, write_file, edit_file, session_state
 
 def get_env_diff(shell: str = "bash") -> str:
     """Computes the difference between starting env and current session state env,
@@ -442,7 +442,11 @@ async def main_async():
         "2. **Error Recovery**:\n"
         "   - Inspect exit codes and stderr of execution outputs. If a command fails, explore the workspace, view relevant files, and resolve the issue with an alternative command.\n"
         "3. **Completion Format**:\n"
-        "   - Upon finishing, output a concise markdown summary explaining your actions and outcomes."
+        "   - Upon finishing, output a concise markdown summary explaining your actions and outcomes.\n"
+        "4. **File Operations**:\n"
+        "   - You MUST use the native file tools (`read_file`, `write_file`, `edit_file`) instead of shell commands (like `cat`, `tee`, `echo >>`, `sed`, etc.) for reading, writing, and editing files.\n"
+        "   - All file paths supplied to file tools MUST be absolute paths.\n"
+        "   - Prefer using `edit_file` over `write_file` when making targeted modifications to existing files to minimize overwrite risk."
     )
     
     # Scan and append agent skills context
@@ -454,7 +458,7 @@ async def main_async():
         backend=backend,
         initial_state={
             "systemPrompt": system_prompt,
-            "tools": [execute_command, request_user_input, read_skill_instructions],
+            "tools": [execute_command, request_user_input, read_skill_instructions, read_file, write_file, edit_file],
             "thinkingLevel": thinking_level
         }
     )

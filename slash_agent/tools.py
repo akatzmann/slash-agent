@@ -9,6 +9,8 @@ import tty
 import signal
 import fcntl
 import struct
+import time
+import difflib
 from typing import Dict, Any, Tuple
 from py_agent_core.tool import tool
 
@@ -26,6 +28,123 @@ class ShellState:
 
 # Global session state singleton
 session_state = ShellState()
+
+SENSITIVE_READ_PATHS = [
+    "/etc/shadow", "/etc/passwd", "/etc/sudoers", "/etc/sudoers.d/",
+    "/etc/ssh/",          # host private keys
+    "/.ssh/",             # user private keys (~/.ssh/ after realpath)
+    "/.gnupg/",           # GPG keys
+    "/proc/",             # kernel/process interfaces
+    "/sys/",              # kernel sysfs
+    "/dev/",              # raw devices
+    "/.aws/credentials", "/.aws/config",
+    "/.config/gcloud/",
+    "/.kube/config",
+]
+
+SENSITIVE_WRITE_PATHS = [
+    *SENSITIVE_READ_PATHS,
+    "/etc/",              # any system config
+    "/usr/",              # system binaries/libraries
+    "/bin/", "/sbin/", "/lib/", "/lib64/",
+    "/boot/",             # kernel images
+]
+
+def resolve_and_check_sensitivity(path: str, sensitive_list: list) -> Tuple[str, bool]:
+    """Resolve absolute path, handling non-existent files by their parent dir, and check sensitivity."""
+    if not os.path.exists(path):
+        parent = os.path.dirname(path)
+        resolved_parent = os.path.realpath(parent)
+        resolved_path = os.path.join(resolved_parent, os.path.basename(path))
+    else:
+        resolved_path = os.path.realpath(path)
+        
+    is_sensitive = False
+    for entry in sensitive_list:
+        if entry.startswith("/."):
+            # Home-relative or user-relative path substring check (e.g. "/.ssh/")
+            if entry in resolved_path:
+                is_sensitive = True
+                break
+        else:
+            # Absolute path check: must match exactly or be a subdirectory of the entry
+            entry_clean = entry.rstrip("/")
+            if resolved_path == entry_clean or resolved_path.startswith(entry_clean + "/"):
+                is_sensitive = True
+                break
+                
+    return resolved_path, is_sensitive
+
+def countdown_warning(path: str):
+    """Executes a configurable warning countdown in the terminal before a critical operation."""
+    delay_str = os.environ.get("SLASH_AGENT_UNSAFE_DELAY", "5")
+    try:
+        delay = int(delay_str)
+        if delay < 0:
+            delay = 5
+    except ValueError:
+        delay = 5
+        
+    print(f"\n\033[1;31m[⚠ UNSAFE-YES] Critical operation proceeding to run/modify:\033[0m")
+    print(f"  {path}")
+    
+    # Count down one second at a time
+    for i in range(delay, 0, -1):
+        print(f"\033[1;33mExecuting in {i} seconds... Press Ctrl+C to abort\033[0m", end="\r", flush=True)
+        time.sleep(1)
+    print("\033[KProceeding.\n", end="", flush=True)
+
+def prompt_file_confirmation(operation: str, path: str, risk_level: str = "low", risk_description: str = "", preview: str = None) -> Tuple[str, str]:
+    """Prompts the user to confirm or comment on a proposed file operation."""
+    print(f"\n\033[1;33m[Agent] Proposed {operation.upper()}:\033[0m")
+    print(f"  {path}\n")
+    
+    if preview:
+        print("\033[1;30m--- Preview ---\033[0m")
+        print(preview)
+        print("\033[1;30m---------------\033[0m\n")
+        
+    # ANSI color mapping for risk levels
+    risk_colors = {
+        "safe": "\033[1;32m",       # Bold Green
+        "low": "\033[1;36m",        # Bold Cyan
+        "moderate": "\033[1;33m",   # Bold Yellow
+        "critical": "\033[1;31m",   # Bold Red
+    }
+    
+    level = risk_level.lower().strip()
+    if level not in risk_colors:
+        level = "low"
+    color = risk_colors[level]
+    
+    print(f"{color}[Risk: {level.capitalize()}]\033[0m", end="")
+    if risk_description:
+        print(f" {risk_description}")
+    else:
+        print()
+    print()
+    
+    print("\033[1;36mConfirm action: [y]es / [n]o / [c]omment ? \033[0m", end="", flush=True)
+    
+    while True:
+        ch = read_char_raw().lower()
+        if ch in ('y', '\r', '\n'):
+            print("yes")
+            return "yes", ""
+        elif ch == 'n':
+            print("no")
+            return "no", ""
+        elif ch == 'c':
+            print("comment")
+            try:
+                comment = input("\033[1;35mFeedback to agent: \033[0m").strip()
+                return "comment", comment
+            except (KeyboardInterrupt, EOFError):
+                print("\nAborted.")
+                return "no", ""
+        elif ch == '\x03': # Ctrl+C
+            print("\nAborted.")
+            return "no", ""
 
 def set_pty_size(fd: int, rows: int, cols: int):
     """Set the window size of a pseudo-terminal file descriptor."""
@@ -322,6 +441,12 @@ async def execute_command(command: str, risk_level: str = "low", risk_descriptio
         can_auto_confirm = False
         
     if can_auto_confirm:
+        if level == "critical" and session_state.unsafe_confirm:
+            try:
+                countdown_warning(command)
+            except KeyboardInterrupt:
+                print("\n\033[1;31m[Aborted] Command execution cancelled by user.\033[0m")
+                return "Error: Command execution aborted by user during safety countdown."
         print(f"\n\033[1;32m[Agent Running]:\033[0m {command}")
         exit_code, output = run_command_in_pty(command)
         return f"Exit code: {exit_code}\nOutput:\n{output}"
@@ -335,6 +460,13 @@ async def execute_command(command: str, risk_level: str = "low", risk_descriptio
         return f"Command rejected by user. Feedback: {cmd_to_run}"
     
     # Run the accepted or edited command
+    if level == "critical" and session_state.unsafe_confirm:
+        try:
+            countdown_warning(cmd_to_run)
+        except KeyboardInterrupt:
+            print("\n\033[1;31m[Aborted] Command execution cancelled by user.\033[0m")
+            return "Error: Command execution aborted by user during safety countdown."
+
     if action == "edit":
         print(f"\033[1;32m[Agent Running Edited Command]:\033[0m {cmd_to_run}")
     else:
@@ -387,5 +519,293 @@ async def read_skill_instructions(skill_path: str) -> str:
         return content
     except Exception as e:
         return f"Error reading skill file: {str(e)}"
+
+
+@tool
+async def read_file(path: str, risk_level: str = "low", risk_description: str = "") -> str:
+    """Reads the complete contents of a file on the user's system.
+    
+    All paths MUST be absolute.
+    
+    Args:
+        path: The absolute filesystem path to read.
+        risk_level: The security risk level of the read. MUST be one of: 'safe', 'low', 'moderate', or 'critical'.
+        risk_description: A brief explanation of the risk. Must be provided if risk_level is 'moderate' or 'critical'.
+    """
+    # Reject non-absolute paths
+    if not os.path.isabs(path):
+        return "Error: Absolute path is required. Relative paths are not allowed."
+        
+    # Resolve path & check sensitivity
+    resolved_path, is_sensitive = resolve_and_check_sensitivity(path, SENSITIVE_READ_PATHS)
+    
+    level = risk_level.lower().strip()
+    desc = risk_description.strip()
+    if is_sensitive:
+        level = "critical"
+        desc = f"Accessing sensitive system path: {resolved_path}"
+        
+    # Apply tiered auto-confirm
+    can_auto_confirm = session_state.auto_confirm
+    if level == "critical" and not session_state.unsafe_confirm:
+        can_auto_confirm = False
+        
+    if can_auto_confirm:
+        if level == "critical":
+            try:
+                countdown_warning(resolved_path)
+            except KeyboardInterrupt:
+                print("\n\033[1;31m[Aborted] Read operation cancelled by user.\033[0m")
+                return "Error: Read operation aborted by user during countdown."
+        else:
+            print(f"\033[1;32m[Agent Reading]\033[0m {resolved_path}")
+            
+        try:
+            with open(resolved_path, "r", encoding="utf-8", errors="ignore") as f:
+                return f.read()
+        except PermissionError as e:
+            return f"Error: Permission denied reading file '{resolved_path}'. Details: {str(e)}"
+        except Exception as e:
+            return f"Error: Failed to read file '{resolved_path}'. Details: {str(e)}"
+
+    # Prompt user for confirmation
+    action, comment = prompt_file_confirmation("READ", resolved_path, risk_level=level, risk_description=desc)
+    
+    if action == "no":
+        return "Error: Read operation rejected by user."
+    elif action == "comment":
+        return f"Error: Read operation rejected by user. Feedback: {comment}"
+        
+    try:
+        with open(resolved_path, "r", encoding="utf-8", errors="ignore") as f:
+            return f.read()
+    except PermissionError as e:
+        return f"Error: Permission denied reading file '{resolved_path}'. Details: {str(e)}"
+    except Exception as e:
+        return f"Error: Failed to read file '{resolved_path}'. Details: {str(e)}"
+
+
+@tool
+async def write_file(path: str, content: str, risk_level: str = "low", risk_description: str = "") -> str:
+    """Writes content to a file (creates or overwrites it).
+    
+    All paths MUST be absolute. Parent directories will be auto-created.
+    
+    Args:
+        path: The absolute filesystem path to write.
+        content: The text content to write to the file.
+        risk_level: The security risk level of the write. MUST be one of: 'safe', 'low', 'moderate', or 'critical'.
+        risk_description: A brief explanation of the risk. Must be provided if risk_level is 'moderate' or 'critical'.
+    """
+    # Reject non-absolute paths
+    if not os.path.isabs(path):
+        return "Error: Absolute path is required. Relative paths are not allowed."
+        
+    # Resolve path & check sensitivity
+    resolved_path, is_sensitive = resolve_and_check_sensitivity(path, SENSITIVE_WRITE_PATHS)
+    
+    level = risk_level.lower().strip()
+    desc = risk_description.strip()
+    if is_sensitive:
+        level = "critical"
+        desc = f"Writing to sensitive system path: {resolved_path}"
+        
+    # Apply tiered auto-confirm
+    can_auto_confirm = session_state.auto_confirm
+    if level == "critical" and not session_state.unsafe_confirm:
+        can_auto_confirm = False
+        
+    if can_auto_confirm:
+        # Check dry-run
+        if session_state.dry_run:
+            print(f"\n\033[1;34m[Dry-run] Would write file:\033[0m {resolved_path}")
+            return f"File write simulated for: {resolved_path}"
+            
+        if level == "critical":
+            try:
+                countdown_warning(resolved_path)
+            except KeyboardInterrupt:
+                print("\n\033[1;31m[Aborted] Write operation cancelled by user.\033[0m")
+                return "Error: Write operation aborted by user during countdown."
+        else:
+            print(f"\033[1;32m[Agent Writing]\033[0m {resolved_path}")
+            
+        try:
+            parent_dir = os.path.dirname(resolved_path)
+            if parent_dir:
+                os.makedirs(parent_dir, exist_ok=True)
+            with open(resolved_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            return f"Success: File written to '{resolved_path}'."
+        except PermissionError as e:
+            return f"Error: Permission denied writing to file '{resolved_path}'. Details: {str(e)}"
+        except Exception as e:
+            return f"Error: Failed to write to file '{resolved_path}'. Details: {str(e)}"
+
+    # Prompt user for confirmation
+    # Preview up to first 10 lines
+    content_lines = content.splitlines()
+    preview_lines = content_lines[:10]
+    preview = "\n".join(preview_lines)
+    if len(content_lines) > 10:
+        preview += "\n..."
+        
+    action, comment = prompt_file_confirmation("WRITE", resolved_path, risk_level=level, risk_description=desc, preview=preview)
+    
+    if action == "no":
+        return "Error: Write operation rejected by user."
+    elif action == "comment":
+        return f"Error: Write operation rejected by user. Feedback: {comment}"
+        
+    # User confirmed "yes"
+    # Check dry-run
+    if session_state.dry_run:
+        print(f"\n\033[1;34m[Dry-run] Would write file:\033[0m {resolved_path}")
+        return f"File write simulated for: {resolved_path}"
+        
+    # If confirmed + unsafe-yes is active + critical: run countdown
+    if level == "critical" and session_state.unsafe_confirm:
+        try:
+            countdown_warning(resolved_path)
+        except KeyboardInterrupt:
+            print("\n\033[1;31m[Aborted] Write operation cancelled by user.\033[0m")
+            return "Error: Write operation aborted by user during countdown."
+            
+    try:
+        parent_dir = os.path.dirname(resolved_path)
+        if parent_dir:
+            os.makedirs(parent_dir, exist_ok=True)
+        with open(resolved_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        return f"Success: File written to '{resolved_path}'."
+    except PermissionError as e:
+        return f"Error: Permission denied writing to file '{resolved_path}'. Details: {str(e)}"
+    except Exception as e:
+        return f"Error: Failed to write to file '{resolved_path}'. Details: {str(e)}"
+
+
+@tool
+async def edit_file(path: str, old_str: str, new_str: str, risk_level: str = "low", risk_description: str = "") -> str:
+    """Makes a targeted replacement within an existing file.
+    
+    All paths MUST be absolute. The old_str must be unique in the file.
+    
+    Args:
+        path: The absolute filesystem path of the file to edit.
+        old_str: The exact literal string to be replaced.
+        new_str: The replacement string.
+        risk_level: The security risk level of the edit. MUST be one of: 'safe', 'low', 'moderate', or 'critical'.
+        risk_description: A brief explanation of the risk. Must be provided if risk_level is 'moderate' or 'critical'.
+    """
+    # Reject non-absolute paths
+    if not os.path.isabs(path):
+        return "Error: Absolute path is required. Relative paths are not allowed."
+        
+    # Resolve path & check sensitivity
+    resolved_path, is_sensitive = resolve_and_check_sensitivity(path, SENSITIVE_WRITE_PATHS)
+    
+    # Check if file exists
+    if not os.path.exists(resolved_path) or not os.path.isfile(resolved_path):
+        return f"Error: Target file '{resolved_path}' does not exist."
+        
+    level = risk_level.lower().strip()
+    desc = risk_description.strip()
+    if is_sensitive:
+        level = "critical"
+        desc = f"Editing sensitive system file: {resolved_path}"
+        
+    # Read current content and validate uniqueness of old_str
+    try:
+        with open(resolved_path, "r", encoding="utf-8", errors="ignore") as f:
+            old_content = f.read()
+    except PermissionError as e:
+        return f"Error: Permission denied reading file '{resolved_path}'. Details: {str(e)}"
+    except Exception as e:
+        return f"Error: Failed to read file '{resolved_path}'. Details: {str(e)}"
+        
+    count = old_content.count(old_str)
+    if count == 0:
+        return "Error: The string to replace ('old_str') was not found in the file."
+    elif count > 1:
+        return f"Error: The string to replace ('old_str') is ambiguous (found {count} occurrences). Please include more surrounding context to make it unique."
+        
+    # Compute new content
+    new_content = old_content.replace(old_str, new_str, 1)
+    
+    # Generate unified diff
+    old_lines = old_content.splitlines()
+    new_lines = new_content.splitlines()
+    diff = list(difflib.unified_diff(
+        old_lines,
+        new_lines,
+        fromfile=resolved_path,
+        tofile=resolved_path,
+        lineterm=""
+    ))
+    diff_str = "\n".join(diff)
+    
+    # Apply tiered auto-confirm
+    can_auto_confirm = session_state.auto_confirm
+    if level == "critical" and not session_state.unsafe_confirm:
+        can_auto_confirm = False
+        
+    if can_auto_confirm:
+        # Check dry-run
+        if session_state.dry_run:
+            print(f"\n\033[1;34m[Dry-run] Would edit file:\033[0m {resolved_path}")
+            if diff_str:
+                print(diff_str)
+            return f"File edit simulated for: {resolved_path}"
+            
+        if level == "critical":
+            try:
+                countdown_warning(resolved_path)
+            except KeyboardInterrupt:
+                print("\n\033[1;31m[Aborted] Edit operation cancelled by user.\033[0m")
+                return "Error: Edit operation aborted by user during countdown."
+        else:
+            print(f"\033[1;32m[Agent Editing]\033[0m {resolved_path}")
+            
+        try:
+            with open(resolved_path, "w", encoding="utf-8") as f:
+                f.write(new_content)
+            return f"Success: File edited at '{resolved_path}'."
+        except PermissionError as e:
+            return f"Error: Permission denied writing to file '{resolved_path}'. Details: {str(e)}"
+        except Exception as e:
+            return f"Error: Failed to write to file '{resolved_path}'. Details: {str(e)}"
+
+    # Prompt user for confirmation with diff
+    action, comment = prompt_file_confirmation("EDIT", resolved_path, risk_level=level, risk_description=desc, preview=diff_str)
+    
+    if action == "no":
+        return "Error: Edit operation rejected by user."
+    elif action == "comment":
+        return f"Error: Edit operation rejected by user. Feedback: {comment}"
+        
+    # User confirmed "yes"
+    # Check dry-run
+    if session_state.dry_run:
+        print(f"\n\033[1;34m[Dry-run] Would edit file:\033[0m {resolved_path}")
+        if diff_str:
+            print(diff_str)
+        return f"File edit simulated for: {resolved_path}"
+        
+    # If confirmed + unsafe-yes is active + critical: run countdown
+    if level == "critical" and session_state.unsafe_confirm:
+        try:
+            countdown_warning(resolved_path)
+        except KeyboardInterrupt:
+            print("\n\033[1;31m[Aborted] Edit operation cancelled by user.\033[0m")
+            return "Error: Edit operation aborted by user during countdown."
+            
+    try:
+        with open(resolved_path, "w", encoding="utf-8") as f:
+            f.write(new_content)
+        return f"Success: File edited at '{resolved_path}'."
+    except PermissionError as e:
+        return f"Error: Permission denied writing to file '{resolved_path}'. Details: {str(e)}"
+    except Exception as e:
+        return f"Error: Failed to write to file '{resolved_path}'. Details: {str(e)}"
 
 
