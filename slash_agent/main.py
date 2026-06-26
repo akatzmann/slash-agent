@@ -466,8 +466,8 @@ async def main_async():
         "   - You MUST use the native file tools (`read_file`, `write_file`, `edit_file`) instead of shell commands (like `cat`, `tee`, `echo >>`, `sed`, etc.) for reading, writing, and editing files.\n"
         "   - All file paths supplied to file tools MUST be absolute paths.\n"
         "   - Prefer using `edit_file` over `write_file` when making targeted modifications to existing files to minimize overwrite risk.\n"
-        "5. **Interacting with the User**:\n"
-        "   - If you need to ask the user a question, clarify a task, or request additional input, you MUST use the `request_user_input` tool. Do NOT simply output a question in your text response, as this will cause the execution session to terminate immediately without prompting the user."
+        "5. **Interacting with the User & Control Flow**:\n"
+        "   - If you need to ask the user a question, clarify a task, or request confirmation/input to proceed, you MUST use the `request_user_input` tool. Do NOT simply output a question or a statement (e.g., 'I will run the commands next' or 'Let me know if that looks right') in your text response, as any response without a tool call will cause the execution session to terminate immediately without prompting or waiting for the user. You must either execute the next step immediately using your tools (e.g., running a command) or call `request_user_input` to get user confirmation/input."
     )
     
     # Scan and append agent skills context
