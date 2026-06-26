@@ -198,28 +198,47 @@ def parse_skill_metadata(skill_file: str, fallback_name: str) -> tuple[str, str]
         
     return name, desc
 
+GLOBAL_SKILLS_DIRS = [
+    "~/.config/slash-agent/skills",
+    "~/.claude/skills",
+    "~/.copilot/skills",
+    "~/.gemini/config/skills",
+]
+
+LOCAL_SKILLS_DIRS = [
+    ".agent/skills",
+    ".claude/skills",
+    ".github/skills"
+]
+
+def find_project_root(local_dirs: list[str] = LOCAL_SKILLS_DIRS) -> str:
+    """Traverse upwards from the current working directory to find a project root."""
+    current = os.getcwd()
+    while True:
+        # Check if any standard project markers or local skill dirs exist here
+        if os.path.isdir(os.path.join(current, ".git")):
+            return current
+        for local_dir in local_dirs:
+            if os.path.isdir(os.path.join(current, local_dir)):
+                return current
+        # Move up to parent
+        parent = os.path.dirname(current)
+        if parent == current: # Reached root '/'
+            break
+        current = parent
+    return os.getcwd() # Fallback to CWD
+
 def discover_skills() -> list[dict[str, str]]:
     """Scan standard global and project-local paths for SKILL.md files and return deduplicated entries."""
-    global_dirs = [
-        "~/.config/slash-agent/skills",
-        "~/.claude/skills",
-        "~/.copilot/skills",
-        "~/.gemini/config/skills",
-    ]
-    local_dirs = [
-        ".agent/skills",
-        ".claude/skills",
-        ".github/skills"
-    ]
-    
     dirs_to_scan = []
     # Scan global paths first, so local paths override on name collisions
-    for path in global_dirs:
+    for path in GLOBAL_SKILLS_DIRS:
         abs_path = os.path.abspath(os.path.expanduser(path))
         dirs_to_scan.append((abs_path, "global"))
         
-    for path in local_dirs:
-        abs_path = os.path.abspath(os.path.join(os.getcwd(), path))
+    project_root = find_project_root(LOCAL_SKILLS_DIRS)
+    for path in LOCAL_SKILLS_DIRS:
+        abs_path = os.path.abspath(os.path.join(project_root, path))
         dirs_to_scan.append((abs_path, "local"))
         
     skills = {}
@@ -446,7 +465,9 @@ async def main_async():
         "4. **File Operations**:\n"
         "   - You MUST use the native file tools (`read_file`, `write_file`, `edit_file`) instead of shell commands (like `cat`, `tee`, `echo >>`, `sed`, etc.) for reading, writing, and editing files.\n"
         "   - All file paths supplied to file tools MUST be absolute paths.\n"
-        "   - Prefer using `edit_file` over `write_file` when making targeted modifications to existing files to minimize overwrite risk."
+        "   - Prefer using `edit_file` over `write_file` when making targeted modifications to existing files to minimize overwrite risk.\n"
+        "5. **Interacting with the User**:\n"
+        "   - If you need to ask the user a question, clarify a task, or request additional input, you MUST use the `request_user_input` tool. Do NOT simply output a question in your text response, as this will cause the execution session to terminate immediately without prompting the user."
     )
     
     # Scan and append agent skills context
