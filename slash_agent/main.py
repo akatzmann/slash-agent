@@ -463,8 +463,8 @@ async def main_async():
         "3. **Task Completion & Stopping**:\n"
         "   - Do NOT stop executing or exit until the user's primary task is fully solved and completed. If you get stuck, require more details, or need confirmation, use `request_user_input` to ask. You must only stop executing and output your final markdown summary (without further tool calls) when the task is fully accomplished or explicitly blocked.\n"
         "4. **File Operations**:\n"
-        "   - You MUST use the native file tools (`read_file`, `write_file`, `edit_file`) instead of shell commands (like `cat`, `tee`, `echo >>`, `sed`, etc.) for reading, writing, and editing files.\n"
-        "   - All file paths supplied to file tools MUST be absolute paths.\n"
+        "   - You MUST use the native file tools (`read_file`, `write_file`, `edit_file`) instead of shell commands (like `cat`, `grep`, `echo`, `sed`, `tee`) for reading, writing, and editing files. Native tools provide diff inspection and safety guardrails.\n"
+        "   - Paths can be relative to the active working directory or absolute.\n"
         "   - Prefer using `edit_file` over `write_file` when making targeted modifications to existing files to minimize overwrite risk.\n"
         "5. **Interacting with the User & Control Flow**:\n"
         "   - If you need to ask the user a question, clarify a task, or request confirmation/input to proceed, you MUST use the `request_user_input` tool. Do NOT simply output a question or a statement (e.g., 'I will run the commands next' or 'Let me know if that looks right') in your text response, as any response without a tool call will cause the execution session to terminate immediately without prompting or waiting for the user. You must either execute the next step immediately using your tools (e.g., running a command) or call `request_user_input` to get user confirmation/input."
@@ -479,7 +479,7 @@ async def main_async():
         backend=backend,
         initial_state={
             "systemPrompt": system_prompt,
-            "tools": [execute_command, request_user_input, read_skill_instructions, read_file, write_file, edit_file],
+            "tools": [read_file, write_file, edit_file, execute_command, request_user_input, read_skill_instructions],
             "thinkingLevel": thinking_level
         }
     )
@@ -501,6 +501,91 @@ async def main_async():
                         print("\033[0m\n\n\033[1;32m[Agent Response]\033[0m\n", end="", flush=True)
                         is_thinking = False
                     print(ev["delta"], end="", flush=True)
+            elif event.type == "tool_execution_start":
+                if is_thinking:
+                    print("\033[0m")
+                    is_thinking = False
+                tool_name = getattr(event, "tool_name", "")
+                args = getattr(event, "args", {})
+                if tool_name == "read_file":
+                    path = args.get("path", "")
+                    print(f"\n\033[1;36m📖 [Reading]\033[0m {path}", flush=True)
+                elif tool_name == "write_file":
+                    path = args.get("path", "")
+                    print(f"\n\033[1;33m📝 [Writing]\033[0m {path}", flush=True)
+                elif tool_name == "edit_file":
+                    path = args.get("path", "")
+                    print(f"\n\033[1;35m✏️  [Editing]\033[0m {path}", flush=True)
+                elif tool_name == "read_skill_instructions":
+                    skill_path = args.get("skill_path", "")
+                    skill_name = os.path.basename(os.path.dirname(skill_path)) if skill_path else "skill"
+                    print(f"\n\033[1;34m🛠  [Skill]\033[0m {skill_name}", flush=True)
+                elif tool_name == "execute_command":
+                    cmd = args.get("command", "")
+                    print(f"\n\033[1;32m⚡ [Running]\033[0m $ {cmd}", flush=True)
+            elif event.type == "tool_execution_end":
+                if is_thinking:
+                    print("\033[0m")
+                    is_thinking = False
+                tool_name = getattr(event, "tool_name", "")
+                res = getattr(event, "result", {})
+                if isinstance(res, dict) and "content" in res:
+                    res_content = res["content"]
+                    if isinstance(res_content, list) and len(res_content) > 0:
+                        res_str = res_content[0].get("text", "")
+                    else:
+                        res_str = str(res_content)
+                else:
+                    res_str = str(res)
+                    
+                if tool_name == "read_file":
+                    if "Error:" in res_str:
+                        print(f"\033[1;31m❌ {res_str}\033[0m", flush=True)
+                    else:
+                        print(f"\033[1;32m✓ Read completed\033[0m", flush=True)
+                elif tool_name == "read_skill_instructions":
+                    if "Error:" in res_str:
+                        print(f"\033[1;31m❌ {res_str}\033[0m", flush=True)
+                    else:
+                        print(f"\033[1;32m✓ Loaded skill instructions\033[0m", flush=True)
+                elif tool_name == "write_file":
+                    if "Error:" in res_str:
+                        print(f"\033[1;31m❌ {res_str}\033[0m", flush=True)
+                    else:
+                        clean_msg = res_str.replace("Success: ", "").strip()
+                        print(f"\033[1;32m✓ {clean_msg}\033[0m", flush=True)
+                elif tool_name == "edit_file":
+                    if "Error:" in res_str:
+                        print(f"\033[1;31m❌ {res_str}\033[0m", flush=True)
+                    else:
+                        if "Diff:\n" in res_str:
+                            parts = res_str.split("Diff:\n", 1)
+                            clean_msg = parts[0].replace("Success: ", "").strip()
+                            diff_text = parts[1]
+                            print(f"\033[1;32m✓ {clean_msg}\033[0m", flush=True)
+                            print("\033[1;30m--- Unified Diff ---\033[0m", flush=True)
+                            for line in diff_text.splitlines():
+                                if line.startswith("+") and not line.startswith("+++"):
+                                    print(f"\033[32m{line}\033[0m", flush=True)
+                                elif line.startswith("-") and not line.startswith("---"):
+                                    print(f"\033[31m{line}\033[0m", flush=True)
+                                elif line.startswith("@@"):
+                                    print(f"\033[36m{line}\033[0m", flush=True)
+                                else:
+                                    print(line, flush=True)
+                            print("\033[1;30m--------------------\033[0m", flush=True)
+                        else:
+                            clean_msg = res_str.replace("Success: ", "").strip()
+                            print(f"\033[1;32m✓ {clean_msg}\033[0m", flush=True)
+                elif tool_name == "execute_command":
+                    if "Error:" in res_str:
+                        print(f"\033[1;31m❌ {res_str}\033[0m", flush=True)
+                    elif "Exit code:" in res_str:
+                        lines = [l for l in res_str.splitlines() if "Exit code:" in l]
+                        if lines and "Exit code: 0" not in lines[0]:
+                            print(f"\033[1;33m✓ Command finished ({lines[0]})\033[0m", flush=True)
+                        else:
+                            print(f"\033[1;32m✓ Command completed successfully\033[0m", flush=True)
             elif event.type == "agent_end":
                 if is_thinking:
                     print("\033[0m")

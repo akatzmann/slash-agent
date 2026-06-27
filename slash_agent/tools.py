@@ -21,6 +21,7 @@ class ShellState:
     """State tracker for the active agent shell session."""
     def __init__(self):
         self.cwd = os.getcwd()
+        self.initial_cwd = os.getcwd()
         self.env_vars = os.environ.copy()
         self.dry_run = False
         self.auto_confirm = False
@@ -50,8 +51,17 @@ SENSITIVE_WRITE_PATHS = [
     "/boot/",             # kernel images
 ]
 
+def is_outside_workspace(resolved_path: str) -> bool:
+    """Check if resolved path falls outside session_state.initial_cwd."""
+    initial_clean = os.path.realpath(session_state.initial_cwd).rstrip("/")
+    res_clean = os.path.realpath(resolved_path)
+    return not (res_clean == initial_clean or res_clean.startswith(initial_clean + "/"))
+
 def resolve_and_check_sensitivity(path: str, sensitive_list: list) -> Tuple[str, bool]:
-    """Resolve absolute path, handling non-existent files by their parent dir, and check sensitivity."""
+    """Resolve path (auto-resolving relative paths against session_state.cwd) and check sensitivity."""
+    if not os.path.isabs(path):
+        path = os.path.join(session_state.cwd, path)
+
     if not os.path.exists(path):
         parent = os.path.dirname(path)
         resolved_parent = os.path.realpath(parent)
@@ -525,17 +535,13 @@ async def read_skill_instructions(skill_path: str) -> str:
 async def read_file(path: str, risk_level: str = "low", risk_description: str = "") -> str:
     """Reads the complete contents of a file on the user's system.
     
-    All paths MUST be absolute.
+    Paths can be absolute or relative to the working directory.
     
     Args:
-        path: The absolute filesystem path to read.
+        path: The filesystem path to read.
         risk_level: The security risk level of the read. MUST be one of: 'safe', 'low', 'moderate', or 'critical'.
         risk_description: A brief explanation of the risk. Must be provided if risk_level is 'moderate' or 'critical'.
     """
-    # Reject non-absolute paths
-    if not os.path.isabs(path):
-        return "Error: Absolute path is required. Relative paths are not allowed."
-        
     # Resolve path & check sensitivity
     resolved_path, is_sensitive = resolve_and_check_sensitivity(path, SENSITIVE_READ_PATHS)
     
@@ -557,8 +563,6 @@ async def read_file(path: str, risk_level: str = "low", risk_description: str = 
             except KeyboardInterrupt:
                 print("\n\033[1;31m[Aborted] Read operation cancelled by user.\033[0m")
                 return "Error: Read operation aborted by user during countdown."
-        else:
-            print(f"\033[1;32m[Agent Reading]\033[0m {resolved_path}")
             
         try:
             with open(resolved_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -589,18 +593,14 @@ async def read_file(path: str, risk_level: str = "low", risk_description: str = 
 async def write_file(path: str, content: str, risk_level: str = "low", risk_description: str = "") -> str:
     """Writes content to a file (creates or overwrites it).
     
-    All paths MUST be absolute. Parent directories will be auto-created.
+    Paths can be absolute or relative to the working directory. Parent directories will be auto-created.
     
     Args:
-        path: The absolute filesystem path to write.
+        path: The filesystem path to write.
         content: The text content to write to the file.
         risk_level: The security risk level of the write. MUST be one of: 'safe', 'low', 'moderate', or 'critical'.
         risk_description: A brief explanation of the risk. Must be provided if risk_level is 'moderate' or 'critical'.
     """
-    # Reject non-absolute paths
-    if not os.path.isabs(path):
-        return "Error: Absolute path is required. Relative paths are not allowed."
-        
     # Resolve path & check sensitivity
     resolved_path, is_sensitive = resolve_and_check_sensitivity(path, SENSITIVE_WRITE_PATHS)
     
@@ -609,12 +609,18 @@ async def write_file(path: str, content: str, risk_level: str = "low", risk_desc
     if is_sensitive:
         level = "critical"
         desc = f"Writing to sensitive system path: {resolved_path}"
+    elif is_outside_workspace(resolved_path):
+        level = "critical"
+        desc = f"Writing to path outside launching workspace directory ({session_state.initial_cwd}): {resolved_path}"
         
     # Apply tiered auto-confirm
     can_auto_confirm = session_state.auto_confirm
     if level == "critical" and not session_state.unsafe_confirm:
         can_auto_confirm = False
         
+    lines_count = len(content.splitlines())
+    summary = f"Wrote {lines_count} lines to '{resolved_path}'."
+    
     if can_auto_confirm:
         # Check dry-run
         if session_state.dry_run:
@@ -627,8 +633,6 @@ async def write_file(path: str, content: str, risk_level: str = "low", risk_desc
             except KeyboardInterrupt:
                 print("\n\033[1;31m[Aborted] Write operation cancelled by user.\033[0m")
                 return "Error: Write operation aborted by user during countdown."
-        else:
-            print(f"\033[1;32m[Agent Writing]\033[0m {resolved_path}")
             
         try:
             parent_dir = os.path.dirname(resolved_path)
@@ -636,7 +640,7 @@ async def write_file(path: str, content: str, risk_level: str = "low", risk_desc
                 os.makedirs(parent_dir, exist_ok=True)
             with open(resolved_path, "w", encoding="utf-8") as f:
                 f.write(content)
-            return f"Success: File written to '{resolved_path}'."
+            return f"Success: {summary}"
         except PermissionError as e:
             return f"Error: Permission denied writing to file '{resolved_path}'. Details: {str(e)}"
         except Exception as e:
@@ -677,7 +681,7 @@ async def write_file(path: str, content: str, risk_level: str = "low", risk_desc
             os.makedirs(parent_dir, exist_ok=True)
         with open(resolved_path, "w", encoding="utf-8") as f:
             f.write(content)
-        return f"Success: File written to '{resolved_path}'."
+        return f"Success: {summary}"
     except PermissionError as e:
         return f"Error: Permission denied writing to file '{resolved_path}'. Details: {str(e)}"
     except Exception as e:
@@ -688,19 +692,15 @@ async def write_file(path: str, content: str, risk_level: str = "low", risk_desc
 async def edit_file(path: str, old_str: str, new_str: str, risk_level: str = "low", risk_description: str = "") -> str:
     """Makes a targeted replacement within an existing file.
     
-    All paths MUST be absolute. The old_str must be unique in the file.
+    Paths can be absolute or relative to the working directory. The old_str must be unique in the file.
     
     Args:
-        path: The absolute filesystem path of the file to edit.
+        path: The filesystem path of the file to edit.
         old_str: The exact literal string to be replaced.
         new_str: The replacement string.
         risk_level: The security risk level of the edit. MUST be one of: 'safe', 'low', 'moderate', or 'critical'.
         risk_description: A brief explanation of the risk. Must be provided if risk_level is 'moderate' or 'critical'.
     """
-    # Reject non-absolute paths
-    if not os.path.isabs(path):
-        return "Error: Absolute path is required. Relative paths are not allowed."
-        
     # Resolve path & check sensitivity
     resolved_path, is_sensitive = resolve_and_check_sensitivity(path, SENSITIVE_WRITE_PATHS)
     
@@ -713,6 +713,9 @@ async def edit_file(path: str, old_str: str, new_str: str, risk_level: str = "lo
     if is_sensitive:
         level = "critical"
         desc = f"Editing sensitive system file: {resolved_path}"
+    elif is_outside_workspace(resolved_path):
+        level = "critical"
+        desc = f"Editing file outside launching workspace directory ({session_state.initial_cwd}): {resolved_path}"
         
     # Read current content and validate uniqueness of old_str
     try:
@@ -749,6 +752,8 @@ async def edit_file(path: str, old_str: str, new_str: str, risk_level: str = "lo
     if level == "critical" and not session_state.unsafe_confirm:
         can_auto_confirm = False
         
+    success_output = f"Success: File edited at '{resolved_path}'.\nDiff:\n{diff_str}" if diff_str else f"Success: File edited at '{resolved_path}'."
+    
     if can_auto_confirm:
         # Check dry-run
         if session_state.dry_run:
@@ -763,13 +768,11 @@ async def edit_file(path: str, old_str: str, new_str: str, risk_level: str = "lo
             except KeyboardInterrupt:
                 print("\n\033[1;31m[Aborted] Edit operation cancelled by user.\033[0m")
                 return "Error: Edit operation aborted by user during countdown."
-        else:
-            print(f"\033[1;32m[Agent Editing]\033[0m {resolved_path}")
             
         try:
             with open(resolved_path, "w", encoding="utf-8") as f:
                 f.write(new_content)
-            return f"Success: File edited at '{resolved_path}'."
+            return success_output
         except PermissionError as e:
             return f"Error: Permission denied writing to file '{resolved_path}'. Details: {str(e)}"
         except Exception as e:
@@ -802,7 +805,7 @@ async def edit_file(path: str, old_str: str, new_str: str, risk_level: str = "lo
     try:
         with open(resolved_path, "w", encoding="utf-8") as f:
             f.write(new_content)
-        return f"Success: File edited at '{resolved_path}'."
+        return success_output
     except PermissionError as e:
         return f"Error: Permission denied writing to file '{resolved_path}'. Details: {str(e)}"
     except Exception as e:
