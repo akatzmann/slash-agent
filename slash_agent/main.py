@@ -507,31 +507,31 @@ async def main_async():
                     print("\033[0m")
                     is_thinking = False
                 tool_name = getattr(event, "tool_name", "")
-                args = getattr(event, "args", {})
-                if isinstance(args, str):
+                tool_args = getattr(event, "args", {})
+                if isinstance(tool_args, str):
                     try:
                         import json
-                        args = json.loads(args)
+                        tool_args = json.loads(tool_args)
                     except Exception:
-                        args = {}
-                if not isinstance(args, dict):
-                    args = {}
+                        tool_args = {}
+                if not isinstance(tool_args, dict):
+                    tool_args = {}
 
                 if tool_name == "read_file":
-                    path = args.get("path", "")
+                    path = tool_args.get("path", "")
                     print(f"\n\033[1;36m📖 [Reading]\033[0m {path}", flush=True)
                 elif tool_name == "write_file":
-                    path = args.get("path", "")
+                    path = tool_args.get("path", "")
                     print(f"\n\033[1;33m📝 [Writing]\033[0m {path}", flush=True)
                 elif tool_name == "edit_file":
-                    path = args.get("path", "")
+                    path = tool_args.get("path", "")
                     print(f"\n\033[1;35m✏️  [Editing]\033[0m {path}", flush=True)
                 elif tool_name == "read_skill_instructions":
-                    skill_path = args.get("skill_path", "")
+                    skill_path = tool_args.get("skill_path", "")
                     skill_name = os.path.basename(os.path.dirname(skill_path)) if skill_path else "skill"
                     print(f"\n\033[1;34m🛠  [Skill]\033[0m {skill_name}", flush=True)
                 elif tool_name == "execute_command":
-                    cmd = args.get("command", "")
+                    cmd = tool_args.get("command", "")
                     print(f"\n\033[1;32m⚡ [Running]\033[0m $ {cmd}", flush=True)
             elif event.type == "tool_execution_end":
                 if is_thinking:
