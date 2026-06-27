@@ -2,17 +2,13 @@
 
 ## Purpose
 Provides the agent with a native, safety-gated tool for reading file contents, subject to absolute-path enforcement, LLM risk assessment, Python-level sensitive-path overrides, and tiered auto-confirm behaviour consistent with the command-risk-assessment model.
-
 ## Requirements
-
 ### Requirement: Absolute Path Enforcement
-The `read_file` tool SHALL reject any path that is not absolute. If a relative path is supplied, the tool SHALL return an error string describing the requirement without reading any file.
+The `read_file` tool SHALL automatically resolve relative paths against the current working directory (`session_state.cwd`) instead of rejecting them. All confirmation prompts and terminal output displays SHALL render the resolved absolute path.
 
-#### Scenario: Relative path rejected
-- **WHEN** the agent calls `read_file` with a path that does not begin with `/`
-- **THEN** the tool returns an error message stating that an absolute path is required and no file content is returned
-
----
+#### Scenario: Relative path auto-resolved
+- **WHEN** the agent calls `read_file` with a relative path (e.g. `src/main.py`)
+- **THEN** the system resolves the path against `session_state.cwd` to an absolute path before executing the read operation
 
 ### Requirement: Symlink-Safe Sensitive Path Detection
 Before applying risk overrides, the system SHALL resolve the supplied path to its real path using the OS symlink-resolution facility. The resolved path SHALL be used for sensitive-path pattern matching, so that symlinks pointing into sensitive directories are treated as if the target path were supplied directly.
@@ -83,3 +79,11 @@ The `read_file` tool SHALL accept `risk_level` and `risk_description` parameters
 #### Scenario: Tool receives risk parameters
 - **WHEN** the agent calls `read_file` with `risk_level` and `risk_description`
 - **THEN** the tool processes them, subject to Python-level override, before presenting any confirmation
+
+### Requirement: Terminal Read Visualization
+The event streaming loop in `main.py` SHALL intercept `ToolExecutionStartEvent` and `ToolExecutionEndEvent` for `read_file` calls to output real-time visual badges in the terminal.
+
+#### Scenario: Real-time read badges rendered
+- **WHEN** `read_file` execution starts and ends
+- **THEN** the terminal displays `📖 [Reading] /resolved/absolute/path` on start and `✓ Read completed` on completion
+

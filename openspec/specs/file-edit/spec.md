@@ -2,17 +2,13 @@
 
 ## Purpose
 Provides the agent with a native, safety-gated tool for making targeted replacements within existing files via exact-match string substitution. Inherits the write risk model and shows a unified diff at confirmation so the user sees precisely what changes before approving.
-
 ## Requirements
-
 ### Requirement: Absolute Path Enforcement
-The `edit_file` tool SHALL reject any path that is not absolute. If a relative path is supplied, the tool SHALL return an error string describing the requirement without modifying any file.
+The `edit_file` tool SHALL automatically resolve relative paths against the current working directory (`session_state.cwd`) instead of rejecting them. All user confirmation prompts and terminal output displays SHALL render the resolved absolute path.
 
-#### Scenario: Relative path rejected
-- **WHEN** the agent calls `edit_file` with a path that does not begin with `/`
-- **THEN** the tool returns an error message stating that an absolute path is required and no file is modified
-
----
+#### Scenario: Relative path auto-resolved
+- **WHEN** the agent calls `edit_file` with a relative path (e.g. `src/utils.py`)
+- **THEN** the system resolves the path against `session_state.cwd` to an absolute path before processing the edit operation
 
 ### Requirement: File Must Exist
 The `edit_file` tool SHALL return an error if the target file does not exist. Creating new files is the responsibility of `write_file`.
@@ -120,3 +116,18 @@ The `edit_file` tool SHALL accept `risk_level` and `risk_description` parameters
 #### Scenario: Tool receives risk parameters
 - **WHEN** the agent calls `edit_file` with `risk_level` and `risk_description`
 - **THEN** the tool processes them, subject to Python-level override, before presenting any confirmation
+
+### Requirement: Workspace Boundary Safety Guardrail for Edits
+Before executing an edit, the system SHALL check if the resolved absolute target path falls outside the initial launching working directory (`session_state.initial_cwd`). If outside, the system SHALL automatically escalate the operation's `risk_level` to `critical`, requiring interactive user confirmation.
+
+#### Scenario: Edit outside initial working directory escalated to critical
+- **WHEN** `edit_file` resolves to a target path outside `session_state.initial_cwd`
+- **THEN** the system sets `risk_level` to `critical` and prompts the user for interactive confirmation regardless of auto-confirm settings
+
+### Requirement: Terminal Edit Visualization with Unified Diff
+The event streaming loop in `main.py` SHALL intercept `ToolExecutionStartEvent` and `ToolExecutionEndEvent` for `edit_file` calls to output real-time visual badges and render colored unified diffs upon completion.
+
+#### Scenario: Real-time edit badges and diff rendered
+- **WHEN** `edit_file` execution starts and ends
+- **THEN** the terminal displays `✏️ [Editing] /resolved/absolute/path` on start and renders the colored `unified_diff` output on completion
+

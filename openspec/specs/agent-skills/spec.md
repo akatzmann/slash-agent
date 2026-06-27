@@ -4,9 +4,7 @@
 Defines the agent skills discovery, parsing, and integration system that allows users to extend the agent's procedural knowledge via modular `SKILL.md` files on disk.
 
 ---
-
 ## Requirements
-
 ### Requirement: Skill Discovery
 The system SHALL scan the following directories at startup to identify installed skills:
 - Global: `~/.config/slash-agent/skills/*/SKILL.md`, `~/.claude/skills/*/SKILL.md`, `~/.copilot/skills/*/SKILL.md`, `~/.gemini/config/skills/*/SKILL.md`
@@ -43,3 +41,11 @@ The system SHALL expose a read-only, auto-confirmed tool named `read_skill_instr
 #### Scenario: Executing tool silently without confirmation
 - **WHEN** the agent invokes `read_skill_instructions` with a valid absolute path to a skill file
 - **THEN** the system returns the file contents to the agent directly without prompting the user for approval or confirmation
+
+### Requirement: Terminal Skill Read Visualization
+The event streaming loop in `main.py` SHALL intercept `ToolExecutionStartEvent` and `ToolExecutionEndEvent` for `read_skill_instructions` calls to output real-time visual badges in the terminal.
+
+#### Scenario: Real-time skill read badges rendered
+- **WHEN** `read_skill_instructions` execution starts and ends
+- **THEN** the terminal displays `🛠 [Skill] <skill-name>` on start and `✓ Loaded skill instructions` on completion
+
