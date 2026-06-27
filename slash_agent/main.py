@@ -477,6 +477,7 @@ async def main_async():
     
     agent = Agent(
         backend=backend,
+        tool_execution="sequential",
         initial_state={
             "systemPrompt": system_prompt,
             "tools": [read_file, write_file, edit_file, execute_command, request_user_input, read_skill_instructions],
