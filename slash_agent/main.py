@@ -507,6 +507,15 @@ async def main_async():
                     is_thinking = False
                 tool_name = getattr(event, "tool_name", "")
                 args = getattr(event, "args", {})
+                if isinstance(args, str):
+                    try:
+                        import json
+                        args = json.loads(args)
+                    except Exception:
+                        args = {}
+                if not isinstance(args, dict):
+                    args = {}
+
                 if tool_name == "read_file":
                     path = args.get("path", "")
                     print(f"\n\033[1;36m📖 [Reading]\033[0m {path}", flush=True)
