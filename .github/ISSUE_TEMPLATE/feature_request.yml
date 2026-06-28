@@ -1,0 +1,40 @@
+name: Feature Request
+description: Propose a new feature, enhancement, CLI option, or agent skill for slash-agent
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for suggesting a feature! Please fill out the form below to propose changes, new shell capabilities, or agent skill additions.
+  - type: textarea
+    id: feature_description
+    attributes:
+      label: Feature Description
+      description: A clear and concise description of what the feature or enhancement is.
+      placeholder: e.g., Add support for custom keybindings in the interactive steering prompt...
+    validations:
+      required: true
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Use Case & Motivation
+      description: Why is this feature needed? What problem does it solve, and how will it benefit terminal developers?
+      placeholder: e.g., Developers working in complex terminal sessions need a quick way to...
+    validations:
+      required: true
+  - type: textarea
+    id: proposed_solution
+    attributes:
+      label: Proposed Solution
+      description: A detailed description of your proposed approach, CLI flag design, or implementation.
+      placeholder: e.g., Add `-k / --keymap` parameter in slash_agent/main.py...
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Describe any alternative solutions or workarounds you considered.
+    validations:
+      required: false
