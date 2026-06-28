@@ -7,11 +7,11 @@
 
 <img src="docs/hero.gif" alt="slash-agent in action" width="100%" />
 
-**slash-agent** is an ultra-lightweight, zero-overhead AI coding partner that integrates natively into your active Bash shell. It operates directly inside your active terminal session with **zero background daemons** or idle resource consumption, staying completely dormant until you need it.
+**slash-agent** is a zero-overhead, dormant AI coding partner integrated natively into your active Bash shell. Simply type `/agent` when you hit a blocker.
 
-Simply type `/agent` when you hit a blocker. It instantly captures your recent terminal context (tmux pane scrollback or command history) to diagnose errors, edit files, and execute commands. When it exits, directory changes (`cd`) and environment exports automatically sync back to your host shell.
-
-Built for privacy with **100% local, private LLM support** (via Ollama) or cloud powerhouses (OpenAI/Azure OpenAI).
+* 🖥️ **Terminal Context Capture:** Instantly reads recent `tmux` scrollback or shell history to diagnose errors without manual copy-pasting.
+* 🔒 **Local & Private LLMs:** Operates 100% offline with local Ollama instances or cloud powerhouses (OpenAI/Azure OpenAI).
+* 🔀 **Host Shell State Sync:** Automatically persists directory transitions (`cd`) and environment exports (`export`) back to your parent shell session on exit.
 
 > [!TIP]
 > 🤖 **Pairing with an AI Assistant?**  
