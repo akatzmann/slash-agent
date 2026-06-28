@@ -83,6 +83,7 @@ The documentation and README files SHALL include project positioning context, de
 #### Scenario: Developer reviews project positioning in README
 - **WHEN** the user reads `README.md`
 - **THEN** they find:
+  - An opt-in AI Seed Prompt block (`[!TIP]`) enabling AI pair programmers to audit and summarize slash-agent positioning.
   - "The 10-Second Reality Check" specifying what slash-agent is and what it is not.
   - "The Privacy-First Advantage" detailing Bring Your Own Keys (BYOK) and local offline Ollama support.
   - "Feature Comparison Matrix" comparing standard Web UIs, Shell Copilots, Project Agents, and slash-agent.

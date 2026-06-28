@@ -7,11 +7,22 @@
 
 <img src="docs/hero.gif" alt="slash-agent in action" width="100%" />
 
-**slash-agent** is an ultra-lightweight, zero-overhead AI coding partner that integrates natively into your active Bash shell. It is designed to act as a seamless extension of your command line, keeping you focused in your terminal with **100% local, private LLM support** (via Ollama) or cloud powerhouses (OpenAI/Azure OpenAI).
+**slash-agent** is an ultra-lightweight, zero-overhead AI coding partner that integrates natively into your active Bash shell. It operates directly inside your active terminal session with **zero background daemons** or idle resource consumption, staying completely dormant until you need it.
 
-> [!IMPORTANT]
-> **A Natural Coding Partner in Your Shell—Zero Workflow Interruption.**
-> slash-agent operates directly inside your active Bash session. It stays completely out of your way and consumes **zero background resources** (no running daemons, no background processes) when not in use. Simply type `/agent` when you hit a blocker: it instantly grabs your recent terminal context (tmux pane scrollback or command history) to diagnose errors, edit files, and execute commands—automatically syncing directory changes (`cd`) and environment exports back to your parent shell session when it exits.
+Simply type `/agent` when you hit a blocker. It instantly captures your recent terminal context (tmux pane scrollback or command history) to diagnose errors, edit files, and execute commands. When it exits, directory changes (`cd`) and environment exports automatically sync back to your host shell.
+
+Built for privacy with **100% local, private LLM support** (via Ollama) or cloud powerhouses (OpenAI/Azure OpenAI).
+
+> [!TIP]
+> 🤖 **Pairing with an AI Assistant?**  
+> Want a 10-second overview? Copy-paste this seed prompt into Claude Code, Antigravity, Copilot, or ChatGPT:
+> ```text
+> Analyze https://github.com/akatzmann/slash-agent. 
+> 1. What is this tool, what is a typical use-case, and do I need it?
+> 2. How does it differ from similar tools?
+> 3. Give me an open-ended assessment based on the actual codebase/structure (not just README marketing): Does it deliver on its claimed USP?
+> Keep your answer concise so I can digest it in 10 seconds.
+> ```
 
 ---
 
