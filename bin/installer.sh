@@ -85,6 +85,22 @@ else
 fi
 
 # 3. Virtual Environment & Dependency Setup
+suggest_venv_installation_command() {
+    if command -v apt-get >/dev/null 2>&1; then
+        echo "Please install python3-venv or virtualenv (e.g. 'sudo apt install python3-venv' or 'pip install virtualenv') and run the installer again."
+    elif command -v dnf >/dev/null 2>&1; then
+        echo "Please install python3-virtualenv or virtualenv (e.g. 'sudo dnf install python3-virtualenv' or 'pip install virtualenv') and run the installer again."
+    elif command -v pacman >/dev/null 2>&1; then
+        echo "Please install python-virtualenv or virtualenv (e.g. 'sudo pacman -S python-virtualenv' or 'pip install virtualenv') and run the installer again."
+    elif command -v apk >/dev/null 2>&1; then
+        echo "Please install py3-virtualenv or virtualenv (e.g. 'sudo apk add py3-virtualenv' or 'pip install virtualenv') and run the installer again."
+    elif [ "$(uname -s)" = "Darwin" ] && command -v brew >/dev/null 2>&1; then
+        echo "Please install python or virtualenv (e.g. 'brew install python' or 'pip install virtualenv') and run the installer again."
+    else
+        echo "Please install python3-venv or virtualenv (e.g. 'pip install virtualenv') and run the installer again."
+    fi
+}
+
 if [ "$FORCE_CONFIGURE" = false ]; then
     if [ ! -d ".venv" ]; then
         echo "Creating Python virtual environment in .venv..."
@@ -94,7 +110,7 @@ if [ "$FORCE_CONFIGURE" = false ]; then
             echo "Virtual environment created using 'virtualenv'."
         else
             echo "Error: Failed to create virtual environment."
-            echo "Please install python3-venv or virtualenv (e.g. 'sudo apt install python3-venv' or 'pip install virtualenv') and run the installer again."
+            suggest_venv_installation_command
             exit 1
         fi
     fi
