@@ -285,6 +285,11 @@ def build_skills_prompt(skills: list[dict[str, str]]) -> str:
 from py_agent_core.agent import Agent
 from slash_agent.tools import execute_command, request_user_input, read_skill_instructions, read_file, write_file, edit_file, session_state
 
+def pwsh_quote(val: str) -> str:
+    """Escapes single quotes and wraps string for PowerShell compatibility."""
+    escaped = val.replace("'", "''")
+    return f"'{escaped}'"
+
 def get_env_diff(shell: str = "bash") -> str:
     """Computes the difference between starting env and current session state env,
     returning shell-compatible environment update statements.
@@ -300,6 +305,8 @@ def get_env_diff(shell: str = "bash") -> str:
             import shlex
             if shell == "fish":
                 diff_cmds.append(f'set -gx {k} {shlex.quote(v)}')
+            elif shell in ("powershell", "pwsh"):
+                diff_cmds.append(f'$env:{k} = {pwsh_quote(v)}')
             else:
                 diff_cmds.append(f'export {k}={shlex.quote(v)}')
             
@@ -308,6 +315,8 @@ def get_env_diff(shell: str = "bash") -> str:
         if k not in session_state.env_vars:
             if shell == "fish":
                 diff_cmds.append(f'set -e {k}')
+            elif shell in ("powershell", "pwsh"):
+                diff_cmds.append(f'Remove-Item -Path "Env:\\{k}" -ErrorAction SilentlyContinue')
             else:
                 diff_cmds.append(f'unset {k}')
             
@@ -317,7 +326,7 @@ async def main_async():
     parser = argparse.ArgumentParser(description="Native LLM Agent Shell Integration")
     parser.add_argument("--context-file", type=str, help="File containing captured terminal history/context")
     parser.add_argument("--sync-file", type=str, help="Temp file to write environment sync commands for parent shell")
-    parser.add_argument("--shell", type=str, default="bash", choices=["bash", "zsh", "ksh", "fish"], help="The active host shell type")
+    parser.add_argument("--shell", type=str, default="bash", choices=["bash", "zsh", "ksh", "fish", "powershell", "pwsh"], help="The active host shell type")
     parser.add_argument("-y", "--yes", action="store_true", help="Auto-confirm all commands")
     parser.add_argument("--unsafe-yes", action="store_true", help="Auto-confirm even critical/dangerous commands")
     parser.add_argument("-n", "--dry-run", action="store_true", help="Dry run simulation mode")
@@ -453,10 +462,29 @@ async def main_async():
         print(f"\033[1;31m[Error] Failed to initialize backend '{backend_type}':\033[0m {e}")
         sys.exit(1)
         
+    import platform
+    os_name = "Windows" if sys.platform == "win32" else ("macOS" if sys.platform == "darwin" else "Linux")
+    
+    env_awareness = (
+        "# Environment Awareness\n"
+        f"- **Operating System**: {os_name} ({platform.system()} {platform.release()})\n"
+        f"- **Active Shell**: {args.shell}\n"
+        f"- **Path Separator**: '{os.path.sep}'\n"
+        f"- **Current Working Directory**: '{os.getcwd()}'\n"
+        "\n"
+        "Align all constructed file paths and shell commands with this environment:\n"
+        "- Windows/PowerShell: use `\\` for paths, and standard PowerShell cmdlets/utilities if running commands.\n"
+        "- Unix/Bash/Zsh/Fish: use `/` for paths, and standard Unix/Fish commands if running commands.\n"
+        "\n"
+    )
+
     system_prompt = (
         "# Role & Identity\n"
         "You are an expert software engineer and shell automation agent helping users directly in their terminal shell.\n"
         "\n"
+    )
+    system_prompt += env_awareness
+    system_prompt += (
         "# Operational Guidelines\n"
         "1. **Command Execution**:\n"
         "   - Prefer non-interactive flags (e.g., `-y`, `-m`) to avoid blocking standard input.\n"
@@ -619,7 +647,10 @@ async def main_async():
                 sync_cmds = []
                 # Directory sync
                 if session_state.cwd != os.getcwd():
-                    sync_cmds.append(f'cd "{session_state.cwd}"')
+                    if args.shell in ("powershell", "pwsh"):
+                        sync_cmds.append(f'Set-Location -LiteralPath {pwsh_quote(session_state.cwd)}')
+                    else:
+                        sync_cmds.append(f'cd "{session_state.cwd}"')
                 
                 # Env diff sync
                 env_diff = get_env_diff(args.shell)

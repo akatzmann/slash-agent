@@ -46,13 +46,19 @@ Unlike web interfaces or proprietary commercial wrappers that silently pipe your
 
 ## ⚡ Quick Start (5-Second Install)
 
-Get up and running instantly. Run the quick installer script in your shell (supports Bash, Zsh, Ksh, and Fish):
+Get up and running instantly. Run the quick installer script in your shell:
 
+**For Unix (Bash, Zsh, Ksh, Fish):**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/akatzmann/slash-agent/master/bin/installer.sh | bash
 ```
 
-*(This automatically clones the repo to `~/.slash-agent`, configures a Python virtual environment, installs requirements, and registers the shell integration in your appropriate shell profile file, e.g. `~/.zshrc`, `~/.bashrc`, `~/.bash_profile`, or `config.fish`.)*
+**For Windows (PowerShell 5.1 & PowerShell Core 7+):**
+```powershell
+powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/akatzmann/slash-agent/master/bin/installer.ps1 | iex"
+```
+
+*(This automatically clones the repo to `~/.slash-agent`, configures a Python virtual environment, installs requirements, and registers the shell integration in your appropriate shell profile file, e.g. `~/.zshrc`, `~/.bashrc`, `config.fish`, or `$PROFILE`.)*
 
 ---
 
@@ -168,14 +174,16 @@ If you prefer to set up the agent manually instead of using the Quick Start scri
    * **Zsh:** `source ~/.slash-agent/bin/slash-agent.sh` in `~/.zshrc`
    * **Ksh:** `source ~/.slash-agent/bin/slash-agent.sh` in `~/.kshrc`
    * **Fish:** `source ~/.slash-agent/bin/slash-agent.fish` in `~/.config/fish/config.fish`
+   * **PowerShell:** `. "$Home\.slash-agent\bin\slash-agent.ps1"` in your `$PROFILE`
 
 ---
 
-## 💻 Windows Support (WSL2)
+## 💻 Windows Support (Native & WSL2)
 
-**slash-agent** runs natively inside Unix-like PTY environments. Native Windows execution (under standard `CMD` or `PowerShell`) is not supported due to PTY emulation limitations.
+**slash-agent** supports both **native Windows execution** under PowerShell (Windows PowerShell 5.1 and PowerShell Core 7+) and **WSL2 (Windows Subsystem for Linux)**.
 
-However, the tool is **100% compatible with WSL2 (Windows Subsystem for Linux)**. Windows users can run `slash-agent` by opening any WSL2 Linux terminal (such as Ubuntu or Debian) and running the standard Quick Start installation command.
+* **Native Windows/PowerShell**: Install using the PowerShell one-liner. Command execution is handled via a thread-based, non-interactive shell runner. While interactive console UIs (like `vim` or `less`) are not supported natively due to Windows PTY limitations, standard development tools (such as `git`, `npm`, `python`, etc.) work natively.
+* **WSL2**: Supported natively by running the Unix Quick Start installation command inside any WSL2 Linux terminal (like Ubuntu or Debian).
 
 > [!NOTE]
 > If you are running local LLM engines (like `llama.cpp` or `Ollama`) natively on your Windows host and need to connect to them from `slash-agent` inside WSL2, see the [WSL2 Host Network Integration guide](docs/documentation.md#wsl2-host-network-integration).
