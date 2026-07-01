@@ -272,20 +272,25 @@ except Exception:
     echo "Select LLM backend:"
     echo "  [1] OpenAI            — gpt-5.4-nano or any OpenAI-compatible endpoint"
     echo "  [2] Ollama (default)  — local or remote Ollama instance"
-    echo "  [3] Azure OpenAI      — Microsoft Azure OpenAI Service"
-    echo "  [4] Dummy             — offline mock (for testing)"
+    echo "  [3] Local OpenAI API  — llama.cpp, vLLM, SGLang, Xinference, etc."
+    echo "  [4] Azure OpenAI      — Microsoft Azure OpenAI Service"
+    echo "  [5] Dummy             — offline mock (for testing)"
     
     BACKEND_DEFAULT="2"
     if [ "$AGENT_BACKEND" = "openai" ]; then
-        BACKEND_DEFAULT="1"
+        if [[ "$AGENT_ENDPOINT" == *"127.0.0.1"* || "$AGENT_ENDPOINT" == *"localhost"* ]]; then
+            BACKEND_DEFAULT="3"
+        else
+            BACKEND_DEFAULT="1"
+        fi
     elif [ "$AGENT_BACKEND" = "azure_openai" ]; then
-        BACKEND_DEFAULT="3"
-    elif [ "$AGENT_BACKEND" = "dummy" ]; then
         BACKEND_DEFAULT="4"
+    elif [ "$AGENT_BACKEND" = "dummy" ]; then
+        BACKEND_DEFAULT="5"
     elif [ "$AGENT_BACKEND" = "ollama" ]; then
         BACKEND_DEFAULT="2"
     fi
-    BACKEND_CHOICE=$(prompt_user "Backend [1-4, default: $BACKEND_DEFAULT]: " "$BACKEND_DEFAULT")
+    BACKEND_CHOICE=$(prompt_user "Backend [1-5, default: $BACKEND_DEFAULT]: " "$BACKEND_DEFAULT")
 
     CHOSEN_BACKEND=""
     if [ "$BACKEND_CHOICE" = "1" ]; then
@@ -293,8 +298,10 @@ except Exception:
     elif [ "$BACKEND_CHOICE" = "2" ]; then
         CHOSEN_BACKEND="ollama"
     elif [ "$BACKEND_CHOICE" = "3" ]; then
-        CHOSEN_BACKEND="azure_openai"
+        CHOSEN_BACKEND="openai"
     elif [ "$BACKEND_CHOICE" = "4" ]; then
+        CHOSEN_BACKEND="azure_openai"
+    elif [ "$BACKEND_CHOICE" = "5" ]; then
         CHOSEN_BACKEND="dummy"
     fi
 
@@ -418,13 +425,92 @@ except Exception:
         fi
 
     elif [ "$BACKEND_CHOICE" = "3" ]; then
+        AGENT_BACKEND="openai"
+        LOCAL_ENDPOINT_DEFAULT="${AGENT_ENDPOINT:-http://127.0.0.1:8080/v1}"
+        echo ""
+        echo "Configure Local API Endpoint (e.g. llama-server default: http://127.0.0.1:8080/v1)"
+        echo "                            (e.g. vLLM default:         http://127.0.0.1:8000/v1)"
+        echo "                            (e.g. SGLang default:       http://127.0.0.1:30000/v1)"
+        echo "                            (e.g. Xinference default:   http://127.0.0.1:9997/v1)"
+        AGENT_ENDPOINT=$(prompt_user "Local API base URL [default: $LOCAL_ENDPOINT_DEFAULT]: " "$LOCAL_ENDPOINT_DEFAULT")
+        
+        # Suffix sanitization: append /v1 if missing
+        if [[ "$AGENT_ENDPOINT" != *"/v1"* && "$AGENT_ENDPOINT" != *"/v1/"* ]]; then
+            AGENT_ENDPOINT="${AGENT_ENDPOINT%/}/v1"
+            echo "  Sanitized endpoint URL to: $AGENT_ENDPOINT"
+        fi
+        
+        MODELS=()
+        fetch_local_models() {
+            local host="$1"
+            python3 -c "
+import urllib.request, json
+try:
+    if any(h in '${host}' for h in ('127.0.0.1', 'localhost')):
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        r = opener.open('${host}/models', timeout=3)
+    else:
+        r = urllib.request.urlopen('${host}/models', timeout=3)
+    with r:
+        models = [m['id'] for m in json.loads(r.read().decode('utf-8')).get('data', [])]
+        print('\n'.join(models))
+except Exception:
+    pass
+" 2>/dev/null
+        }
+        
+        echo "Probing local API service at $AGENT_ENDPOINT..."
+        MODEL_LIST=$(fetch_local_models "$AGENT_ENDPOINT")
+        if [ -n "$MODEL_LIST" ]; then
+            while IFS= read -r line; do
+                [ -n "$line" ] && MODELS+=("$line")
+            done <<< "$MODEL_LIST"
+        fi
+        
+        if [ ${#MODELS[@]} -gt 0 ]; then
+            echo "Found the following models loaded in your local server:"
+            DEFAULT_INDEX=1
+            for i in "${!MODELS[@]}"; do
+                echo "  [$((i+1))] ${MODELS[$i]}"
+                if [ "${MODELS[$i]}" = "$AGENT_MODEL" ]; then
+                    DEFAULT_INDEX=$((i+1))
+                fi
+            done
+            CUSTOM_OPTION_INDEX=$((${#MODELS[@]} + 1))
+            echo "  [$CUSTOM_OPTION_INDEX] Enter a custom model name manually"
+            while true; do
+                choice=$(prompt_user "Select a model [1-$CUSTOM_OPTION_INDEX, default: $DEFAULT_INDEX]: " "$DEFAULT_INDEX")
+                if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "$CUSTOM_OPTION_INDEX" ]; then
+                    if [ "$choice" -eq "$CUSTOM_OPTION_INDEX" ]; then
+                        AGENT_MODEL=$(prompt_user "Enter model name [default: $AGENT_MODEL]: " "$AGENT_MODEL")
+                        [ -z "$AGENT_MODEL" ] && echo "Model name cannot be empty." && continue
+                    else
+                        AGENT_MODEL="${MODELS[$((choice-1))]}"
+                    fi
+                    break
+                else
+                    echo "Invalid selection. Please try again."
+                fi
+            done
+        else
+            echo "Local API service did not respond or has no active models loaded."
+            AGENT_MODEL=$(prompt_user "Enter model identifier [default: ${AGENT_MODEL:-gemma4-27b}]: " "${AGENT_MODEL:-gemma4-27b}")
+        fi
+        
+        if [ -z "$OPENAI_API_KEY" ]; then
+            OPENAI_API_KEY_VAL="local-api-key"
+        else
+            OPENAI_API_KEY_VAL="$OPENAI_API_KEY"
+        fi
+
+    elif [ "$BACKEND_CHOICE" = "4" ]; then
         AGENT_BACKEND="azure_openai"
         AGENT_ENDPOINT=$(prompt_user "Azure OpenAI endpoint URL [default: $AGENT_ENDPOINT]: " "$AGENT_ENDPOINT")
         AGENT_MODEL=$(prompt_user "Deployment/model name [default: ${AGENT_MODEL:-gpt-5.4-nano}]: " "${AGENT_MODEL:-gpt-5.4-nano}")
         AZURE_OPENAI_API_KEY_VAL=$(prompt_user "Azure OpenAI API key [default: $AZURE_OPENAI_API_KEY]: " "$AZURE_OPENAI_API_KEY")
         AZURE_OPENAI_API_VERSION_VAL=$(prompt_user "API version [default: ${AZURE_OPENAI_API_VERSION:-2025-04-01-preview}]: " "${AZURE_OPENAI_API_VERSION:-2025-04-01-preview}")
 
-    elif [ "$BACKEND_CHOICE" = "4" ]; then
+    elif [ "$BACKEND_CHOICE" = "5" ]; then
         AGENT_BACKEND="dummy"
         echo "Dummy backend selected. No configuration needed."
 
