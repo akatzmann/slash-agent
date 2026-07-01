@@ -2,17 +2,24 @@ import os
 import sys
 import re
 import asyncio
-import select
-import pty
-import termios
-import tty
 import signal
-import fcntl
 import struct
 import time
 import difflib
 from typing import Dict, Any, Tuple
 from py_agent_core.tool import tool
+
+# Conditional POSIX-only imports
+if sys.platform != 'win32':
+    import select
+    import pty
+    import termios
+    import tty
+    import fcntl
+else:
+    # Placeholders/mocks for type hints or simple fallback checks if needed
+    pass
+
 
 # Regex to strip ANSI color and formatting codes
 ANSI_ESCAPE_RE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
@@ -51,10 +58,24 @@ SENSITIVE_WRITE_PATHS = [
     "/boot/",             # kernel images
 ]
 
+# Dynamically append Windows-specific sensitive files/folders on Windows hosts
+if sys.platform == 'win32':
+    sys_root = os.environ.get('SystemRoot', 'C:\\Windows').replace('\\', '/').lower()
+    SENSITIVE_READ_PATHS.extend([
+        f"{sys_root}/system32/config/sam",
+        f"{sys_root}/system32/config/security",
+        f"{sys_root}/system32/config/system",
+        f"{sys_root}/system32/config/software",
+    ])
+    SENSITIVE_WRITE_PATHS.extend([
+        f"{sys_root}/system32",
+    ])
+
 def is_outside_workspace(resolved_path: str) -> bool:
     """Check if resolved path falls outside session_state.initial_cwd."""
-    initial_clean = os.path.realpath(session_state.initial_cwd).rstrip("/")
-    res_clean = os.path.realpath(resolved_path)
+    # Convert all path separators to forward slashes for robust cross-platform comparison
+    initial_clean = os.path.realpath(session_state.initial_cwd).replace(os.path.sep, "/").rstrip("/")
+    res_clean = os.path.realpath(resolved_path).replace(os.path.sep, "/").rstrip("/")
     return not (res_clean == initial_clean or res_clean.startswith(initial_clean + "/"))
 
 def resolve_and_check_sensitivity(path: str, sensitive_list: list) -> Tuple[str, bool]:
@@ -69,17 +90,23 @@ def resolve_and_check_sensitivity(path: str, sensitive_list: list) -> Tuple[str,
     else:
         resolved_path = os.path.realpath(path)
         
+    # Convert path to lowercase (if Windows) and forward slashes for sensitivity check
+    normalized_path = resolved_path.replace(os.path.sep, "/")
+    if sys.platform == 'win32':
+        normalized_path = normalized_path.lower()
+        
     is_sensitive = False
     for entry in sensitive_list:
-        if entry.startswith("/."):
+        entry_normalized = entry.lower() if sys.platform == 'win32' else entry
+        if entry_normalized.startswith("/."):
             # Home-relative or user-relative path substring check (e.g. "/.ssh/")
-            if entry in resolved_path:
+            if entry_normalized in normalized_path:
                 is_sensitive = True
                 break
         else:
             # Absolute path check: must match exactly or be a subdirectory of the entry
-            entry_clean = entry.rstrip("/")
-            if resolved_path == entry_clean or resolved_path.startswith(entry_clean + "/"):
+            entry_clean = entry_normalized.rstrip("/")
+            if normalized_path == entry_clean or normalized_path.startswith(entry_clean + "/"):
                 is_sensitive = True
                 break
                 
@@ -243,11 +270,92 @@ def prompt_user_confirmation(command: str, risk_level: str = "low", risk_descrip
             print("\nAborted.")
             return "no", ""
 
+def run_command_windows(command: str) -> Tuple[int, str]:
+    """Executes a command inside a standard subprocess Popen on Windows,
+    capturing and streaming output in real-time.
+    """
+    import subprocess
+    import shutil
+    
+    # Determine the host PowerShell executable
+    shell_executable = "powershell.exe"
+    if shutil.which("pwsh"):
+        shell_executable = "pwsh"
+        
+    state_token = "___AGENT_SHELL_STATE___"
+    env_block_cmd = '[string]::Join("`0", (Get-ChildItem Env: | ForEach-Object { "$($_.Name)=$($_.Value)" }))'
+    
+    full_cmd = (
+        f"$ErrorActionPreference = 'Continue'; "
+        f"Set-Location -LiteralPath '{session_state.cwd}'; "
+        f"{command}; "
+        f"$last_exit = $LASTEXITCODE; "
+        f"if ($last_exit -eq $null) {{ $last_exit = if ($?) {{ 0 }} else {{ 1 }} }}; "
+        f"Write-Output ''; "
+        f"Write-Output '{state_token}'; "
+        f"Write-Output 'exit_code=$last_exit'; "
+        f"Write-Output 'pwd=$((Get-Location).Path)'; "
+        f"Write-Output {env_block_cmd}"
+    )
+    
+    env_to_pass = session_state.env_vars.copy()
+    
+    proc = subprocess.Popen(
+        [shell_executable, "-NoProfile", "-NonInteractive", "-Command", full_cmd],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        env=env_to_pass,
+        bufsize=0
+    )
+    
+    accumulated_output = b""
+    state_buffer = b""
+    token_found = False
+    token_bytes = state_token.encode("utf-8")
+    
+    try:
+        while True:
+            data = proc.stdout.read(1024)
+            if not data:
+                break
+                
+            if not token_found:
+                temp = accumulated_output + data
+                idx = temp.find(token_bytes)
+                if idx != -1:
+                    token_found = True
+                    before_token = temp[len(accumulated_output):idx]
+                    sys.stdout.buffer.write(before_token)
+                    sys.stdout.buffer.flush()
+                    accumulated_output = temp[:idx]
+                    state_buffer = temp[idx:]
+                else:
+                    sys.stdout.buffer.write(data)
+                    sys.stdout.buffer.flush()
+                    accumulated_output += data
+            else:
+                state_buffer += data
+                
+        proc.wait()
+    except KeyboardInterrupt:
+        proc.terminate()
+        try:
+            proc.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+        raise KeyboardInterrupt
+        
+    return parse_pty_result(accumulated_output, state_buffer)
+
 def run_command_in_pty(command: str) -> Tuple[int, str]:
-    """Executes a command inside a pseudo-terminal PTY.
+    """Executes a command inside a pseudo-terminal PTY or delegates to Windows runner.
     
     Bridges stdin/stdout/stderr, updates PTY size, traps SIGWINCH, and cleans output.
     """
+    if sys.platform == 'win32':
+        return run_command_windows(command)
+        
     fd_in = sys.stdin.fileno()
     is_tty = os.isatty(fd_in)
     
@@ -379,8 +487,8 @@ def parse_pty_result(command_output: bytes, state_buffer: bytes = b"") -> Tuple[
     parts = state_buffer.split(b"\n", 3)
     
     if len(parts) >= 3:
-        exit_line = parts[1]
-        pwd_line = parts[2]
+        exit_line = parts[1].replace(b"\r", b"")
+        pwd_line = parts[2].replace(b"\r", b"")
         if exit_line.startswith(b"exit_code="):
             try:
                 exit_code = int(exit_line.split(b"=", 1)[1])
@@ -429,13 +537,16 @@ async def execute_command(command: str, risk_level: str = "low", risk_descriptio
     
     # Python-level Safety Guardrail overrides for dangerous commands
     cmd_lower = command.lower()
-    critical_patterns = ["rm -rf", "sudo ", "mkfs", "dd ", "chmod -r", "chown -r", "/dev/sd"]
+    critical_patterns = [
+        "rm -rf", "sudo ", "mkfs", "dd ", "chmod -r", "chown -r", "/dev/sd",
+        "remove-item -recurse", "remove-item -r", "del /s", "format ", "takeown", "icacls", "runas"
+    ]
     if any(pat in cmd_lower for pat in critical_patterns):
         level = "critical"
-        desc = "Command contains administrative or destructive file-system operations (e.g., rm, sudo, chown)."
+        desc = "Command contains administrative or destructive file-system operations (e.g., rm, sudo, chown, remove-item, runas)."
     
     # Elevate risk to moderate for script executions/other shells if not already higher
-    script_patterns = ["./", "sh ", "bash ", "python ", "make ", "npx ", "npm run "]
+    script_patterns = ["./", ".\\", "sh ", "bash ", "python ", "make ", "npx ", "npm run ", "powershell ", "pwsh ", "cmd "]
     if level in ("safe", "low") and any(pat in cmd_lower for pat in script_patterns):
         level = "moderate"
         desc = "Command executes a local script, runner, or makefile."
