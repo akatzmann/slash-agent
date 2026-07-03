@@ -1,5 +1,6 @@
 import asyncio
 import argparse
+import getpass
 import sys
 import os
 import re
@@ -350,7 +351,7 @@ async def main_async():
     # Add captured terminal history as system context if present
     env_context = (
         f"# Environment Context\n"
-        f"- Active User: {os.getlogin()} (UID: {os.getuid()})\n"
+        f"- Active User: {getpass.getuser()} (UID: {os.getuid()})\n"
         f"- Current Working Directory: {os.getcwd()}\n\n"
     )
     if captured_context:
