@@ -1,5 +1,6 @@
 import asyncio
 import argparse
+import getpass
 import sys
 import os
 import re
@@ -346,11 +347,14 @@ async def main_async():
         else:
             parser.print_help()
             sys.exit(0)
-            
+
+    # Determine UID if available (UNIX-only)
+    uid_suffix = f" (UID: {os.getuid()})" if hasattr(os, "getuid") else ""
+    
     # Add captured terminal history as system context if present
     env_context = (
         f"# Environment Context\n"
-        f"- Active User: {os.getlogin()} (UID: {os.getuid()})\n"
+        f"- Active User: {getpass.getuser()}{uid_suffix}\n"
         f"- Current Working Directory: {os.getcwd()}\n\n"
     )
     if captured_context:
