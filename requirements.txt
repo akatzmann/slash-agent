@@ -1,2 +1,2 @@
 ollama
-git+https://github.com/akatzmann/py-agent-core.git@v0.1.1
+git+https://github.com/akatzmann/py-agent-core.git@v0.1.2
