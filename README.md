@@ -177,6 +177,9 @@ If you prefer to set up the agent manually instead of using the Quick Start scri
 
 However, the tool is **100% compatible with WSL2 (Windows Subsystem for Linux)**. Windows users can run `slash-agent` by opening any WSL2 Linux terminal (such as Ubuntu or Debian) and running the standard Quick Start installation command.
 
+> [!NOTE]
+> If you are running local LLM engines (like `llama.cpp` or `Ollama`) natively on your Windows host and need to connect to them from `slash-agent` inside WSL2, see the [WSL2 Host Network Integration guide](docs/documentation.md#wsl2-host-network-integration).
+
 ---
 
 ## ⚙️ Configuration

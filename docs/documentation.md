@@ -165,6 +165,30 @@ The table below lists the standard configuration parameters for popular local ru
 ### 🧠 Using Local Reasoning Models (e.g., DeepSeek-R1)
 If you are running DeepSeek-R1 locally and notice raw `<think>...</think>` tags polluting the agent output or tools failing to parse because of thinking formatting, configure your server to disable or suppress reasoning tokens during standard completion calls (e.g., by launching your `llama-server` with the `--reasoning-budget 0` argument).
 
+### WSL2 Host Network Integration
+
+When running local LLM servers (like `llama.cpp` or `Ollama`) natively on your Windows host while executing `slash-agent` inside WSL2, network isolation prevents connection to `localhost`. You can bridge this boundary using one of two methods:
+
+#### Method 1: Mirrored Networking
+Shares the Windows host network stack directly with the WSL VM, enabling loopback communication.
+1. Create or edit `%USERPROFILE%\.wslconfig` on your Windows host and add:
+   ```ini
+   [wsl2]
+   networkingMode=mirrored
+   ```
+2. Restart WSL by running `wsl --shutdown` in Windows Command Prompt or PowerShell.
+3. Configure `slash-agent` to connect to loopback (e.g., `http://localhost:8080/v1` for `llama.cpp` or `http://localhost:11434` for Ollama).
+*Note: Requires Windows 11 (22H2+) and WSL 2.0.0+. Can conflict with corporate VPNs or local Kubernetes VM setups.*
+
+#### Method 2: NAT Mode Routing (Fallback)
+Allows communication through the virtual NAT switch interface.
+1. Configure your Windows LLM server to listen on all interfaces (`0.0.0.0`) and ensure Windows Defender Firewall allows inbound traffic on its port (e.g., `8080` or `11434`).
+2. Resolve the Windows host address dynamically inside your agent environment configuration (`~/.config/slash-agent/env`):
+   ```bash
+   export AGENT_ENDPOINT="http://$(ip route show | grep default | awk '{print $3}'):8080/v1"
+   ```
+*Note: Works universally on all Windows and WSL setups, but exposes the LLM server to your local network.*
+
 ---
 
 ## 6. Installation Options

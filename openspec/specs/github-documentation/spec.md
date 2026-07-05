@@ -64,6 +64,18 @@ The documentation SHALL specify the compatibility requirements for Windows users
 
 ---
 
+### Requirement: WSL2 Host Network Integration Documentation
+The documentation SHALL provide clear, concise guidelines for connecting `slash-agent` inside WSL2 to local LLM servers (like `llama.cpp` or `Ollama`) on the Windows host, documenting both Mirrored Networking and NAT Mode routing configurations.
+
+#### Scenario: Windows developer reads about Mirrored Networking and NAT Mode configuration
+- **WHEN** a developer checks the WSL2 host network integration guidelines in the technical documentation
+- **THEN** they find:
+  - Concise steps to configure Mirrored Networking (`networkingMode=mirrored`) inside `.wslconfig`.
+  - A fallback configuration for NAT Mode routing using dynamic IP route resolution (`ip route show...`).
+  - Security warnings explaining the implications of binding Windows-hosted LLM runners to `0.0.0.0`.
+
+---
+
 ### Requirement: Documentation for Thinking Mode and Re-configuration
 The system documentation MUST include detailed instructions for configuring, using, and updating the agent's thinking level and running the re-configuration wizard. Additionally, all references to configuration parameters in `README.md` and `docs/documentation.md` SHALL guide the user to find and edit their settings in their XDG-standard user configuration directory (e.g. `~/.config/slash-agent/env`), explaining how custom path overrides (`SLASH_AGENT_CONFIG_FILE`) and fallback defaults operate.
 
