@@ -26,7 +26,7 @@ if (!$Configure) {
     Write-Host "Verifying prerequisites..."
     
     if (!(Get-Command git -ErrorAction SilentlyContinue)) {
-        Write-Error "Error: git is not installed. Please install git and try again."
+        Write-Error "Error: git is not installed. Please install git (winget install Git.Git) and try again."
         exit 1
     }
     
@@ -107,8 +107,20 @@ function Get-ConfigPath {
     if ($env:SLASH_AGENT_CONFIG_FILE) {
         return $env:SLASH_AGENT_CONFIG_FILE
     }
-    $ConfigDir = Join-Path $env:USERPROFILE ".config\slash-agent"
-    return Join-Path $ConfigDir "env"
+    $HomeDir = if ($env:USERPROFILE) { $env:USERPROFILE } else { $HOME }
+    if ($IsWindows -or ($env:OS -eq "Windows_NT")) {
+        $ConfigDir = Join-Path $HomeDir ".config/slash-agent"
+        return Join-Path $ConfigDir "env"
+    } else {
+        # Linux/macOS: match Python agent's get_config_path() which uses ".env"
+        $XdgConfig = $env:XDG_CONFIG_HOME
+        if ($XdgConfig) {
+            $ConfigDir = Join-Path $XdgConfig "slash-agent"
+        } else {
+            $ConfigDir = Join-Path $HomeDir ".config/slash-agent"
+        }
+        return Join-Path $ConfigDir ".env"
+    }
 }
 
 $ConfigPath = Get-ConfigPath

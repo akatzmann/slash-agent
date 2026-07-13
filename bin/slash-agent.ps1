@@ -19,7 +19,8 @@ function _agent_run {
 
     # Generate temporary files
     $ContextFile = [System.IO.Path]::GetTempFileName()
-    $SyncFile = [System.IO.Path]::GetTempFileName()
+    $SyncFile = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), [System.IO.Path]::GetRandomFileName() + ".ps1")
+
 
     # 2. Capture recent command history (PSReadLine integration)
     $HistCommands = if ($env:AGENT_HISTORY_COMMANDS) { [int]$env:AGENT_HISTORY_COMMANDS } else { 20 }

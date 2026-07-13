@@ -472,17 +472,32 @@ async def main_async():
     import platform
     os_name = "Windows" if sys.platform == "win32" else ("macOS" if sys.platform == "darwin" else "Linux")
     
+    if os_name == "Windows":
+        exec_shell = "PowerShell"
+        cmd_guidance = (
+            "- Windows/PowerShell: Use `\\` backslash paths, and standard PowerShell cmdlets/utilities if running commands.\n"
+            "- Commands are executed inside a PowerShell Core or Windows PowerShell subprocess.\n"
+        )
+    else:
+        exec_shell = "bash"
+        cmd_guidance = (
+            "- Unix/Bash/Zsh/Fish: Use `/` forward slash paths, and standard Unix commands (e.g., `ls`, `grep`, `hostname`).\n"
+            "- Commands are executed inside a bash PTY subprocess, even if the user's interactive shell is PowerShell/pwsh.\n"
+            "- Do NOT generate PowerShell cmdlets or PowerShell syntax (e.g. `$env:VAR = ...` or `Get-ChildItem`) "
+            "as they will fail to run inside the bash execution shell.\n"
+        )
+
     env_awareness = (
         "# Environment Awareness\n"
         f"- **Operating System**: {os_name} ({platform.system()} {platform.release()})\n"
-        f"- **Active Shell**: {args.shell}\n"
+        f"- **User's Interactive Shell**: {args.shell}\n"
+        f"- **Command Execution Shell**: {exec_shell}\n"
         f"- **Path Separator**: '{os.path.sep}'\n"
         f"- **Current Working Directory**: '{os.getcwd()}'\n"
         "\n"
         "Align all constructed file paths and shell commands with this environment:\n"
-        "- Windows/PowerShell: use `\\` for paths, and standard PowerShell cmdlets/utilities if running commands.\n"
-        "- Unix/Bash/Zsh/Fish: use `/` for paths, and standard Unix/Fish commands if running commands.\n"
-        "\n"
+        + cmd_guidance
+        + "\n"
     )
 
     system_prompt = (
