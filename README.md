@@ -35,7 +35,9 @@
 | **🛠️ An interactive shell executor.** It feeds commands into a real pseudo-terminal (PTY) and asks for live user validation before executing. | **📋 A basic copy-paster.** It doesn't just vomit Markdown code blocks that leave you manually highlighting, copying, and running text. |
 | **🔀 A state-synchronizer.** It bridges the gap between subshells, allowing environment exports and directory changes (`cd`) to persist in your parent shell. | **🏞️ A sandboxed IDE.** It modifies your actual live environment; it is not an isolated, safe-play sandbox. |
 
-### 🔒 The Privacy-First Advantage
+### 🔒 Privacy & Security Model
+
+For detailed specifications on the safety sandbox, permission gating, sensitive path restrictions, and transient logging, see the [Security Model Guide](docs/security_model.md).
 
 Unlike web interfaces or proprietary commercial wrappers that silently pipe your telemetry to corporate servers, **slash-agent** puts you in total control of your data flow:
 

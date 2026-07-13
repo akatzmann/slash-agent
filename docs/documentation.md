@@ -136,6 +136,7 @@ Configure these variables in your configuration file (defaulting to `~/.config/s
 - `AGENT_THINKING_LEVEL`: Specifies the thinking/reasoning depth level. Valid options are `off` (default), `low`, `medium`, and `high`. Maps to `reasoning_effort` for OpenAI models and toggles thinking options (`think=True`) in Ollama backends (e.g., DeepSeek-R1).
 - `AGENT_TEMPERATURE`: Float value specifying the LLM sampling temperature (e.g. `0.2`). Left blank or unset to use the model's/API's default temperature. Note: OpenAI's o-series reasoning models (such as `o1`/`o3`) do not support custom temperature.
 - `AGENT_TOP_P`: Float value specifying the nucleus sampling probability threshold (e.g. `0.9`). Left blank or unset to use the model's/API's default value. Note: OpenAI's o-series reasoning models do not support custom `top_p`.
+- `AGENT_READ_LINE_LIMIT`: Integer specifying the default maximum line count read by the `read_file` tool before truncation occurs (defaults to `800`).
 
 ### Visual Formatting of Reasoning Stream
 When an agent is configured with a thinking level other than `"off"`, the LLM backend streams reasoning/thinking tokens before generating the final text response. `slash-agent` captures these events (`thinking_delta`) and formats them visually in the terminal:

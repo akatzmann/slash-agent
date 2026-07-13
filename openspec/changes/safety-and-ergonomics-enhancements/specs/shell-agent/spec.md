@@ -24,3 +24,12 @@ The system SHALL write the full multiplexed stdout/stderr of every command execu
 #### Scenario: Large output log path returned to agent
 - **WHEN** a command executes and generates 250KB of output
 - **THEN** the system writes the output to `<temp_dir>/slash-agent/cmd_<run_id>.log` with owner-only permissions and returns the log path and preview to the agent.
+
+---
+
+### Requirement: Clean Session Log Cleanup
+To prevent disk clutter, the system SHALL track all transient log files created during the session and delete them upon clean exit of the main agent loop. If the agent terminates abnormally or crashes, the log files SHALL remain intact to permit diagnostics.
+
+#### Scenario: Clean exit deletes session logs
+- **WHEN** the agent finishes all tasks and exits cleanly
+- **THEN** all transient log files created during the current session are deleted.

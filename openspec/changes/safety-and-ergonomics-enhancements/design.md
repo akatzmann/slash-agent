@@ -35,6 +35,7 @@ else:
 ### 2. Line-Bounded File Reads
 Add `start_line` and `end_line` optional arguments to `read_file` in `tools.py`.
 * Under the hood, the file will be read line-by-line, and only the requested window (1-indexed, inclusive) is returned.
+* Display the requested line range parameters (e.g., `(Lines 10-15)`) directly next to the file path in the user confirmation prompt, so the user knows exactly what segment is being accessed.
 * If parameters are absent and the file contains more than 800 lines:
   * Read the first 800 lines.
   * Append a warning notification specifying the exact line range read, total line count of the file, and syntax guide for line ranges:
@@ -46,6 +47,7 @@ Add `start_line` and `end_line` optional arguments to `read_file` in `tools.py`.
   * Do not return the full text in the tool output.
   * Instead, return:
     `[Output Truncated: Size {size}KB. Full logs written to {log_path}. Showing last 100 lines: \n{tail_preview}\n Use the read_file tool with start_line/end_line to inspect specific segments of the log file.]`
+* To prevent disk clutter during active use, the orchestrator tracks all log paths created during the session and registers a clean exit hook to delete them upon clean session exit, preserving them only if an abnormal termination or crash occurs.
 
 ### 4. Selective Terminal Streaming and `--silent` Flag
 * Add a `--silent` flag to `main.py` arguments. If set, redirect command execution stdout prints to a null target, except on failure.

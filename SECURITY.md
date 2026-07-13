@@ -10,8 +10,11 @@ Only the latest release version of `slash-agent` is actively supported with secu
 
 | Version | Supported          |
 | ------- | ------------------ |
-| v0.1.x  | :white_check_mark: |
+| v0.2.x  | :white_check_mark: |
+| v0.1.x  | :x:                |
 | < v0.1  | :x:                |
+
+For detailed information on the sandbox architecture, permission gating, and command inspection controls, see our [Security Model](docs/security_model.md).
 
 ---
 
