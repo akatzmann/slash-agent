@@ -29,10 +29,11 @@ We will implement conditional OS binding inside a `teardown_tasks()` handler cal
 * **Windows:** Use the `win32job` module to construct a Job Object. Attach each spawned subprocess to the Job Object. When the parent process terminates, Windows automatically terminates all processes in the job.
 
 ### 3. Management Tools
-Register three new tool definitions:
+Register four new tool definitions:
 * `list_background_tasks()`: Scans `active_tasks`, queries process statuses, and returns names/IDs.
 * `get_task_logs(task_id, tail_lines=100)`: Reads the log file buffer on disk (redirected during spawning) and returns the requested tail slice.
 * `kill_background_task(task_id)`: Terminates the process group statefully and removes it from `active_tasks`.
+* `wait_seconds(seconds)`: Pauses agent loop via `asyncio.sleep` to let background tasks progress, avoiding shell prompt confirmation.
 
 ## Risks / Trade-offs
 

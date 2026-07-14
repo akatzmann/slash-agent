@@ -283,7 +283,12 @@ def build_skills_prompt(skills: list[dict[str, str]]) -> str:
 
 # Import agent and tools (ensuring tools capture the sanitized os.environ in session_state)
 from py_agent_core.agent import Agent
-from slash_agent.tools import execute_command, request_user_input, read_skill_instructions, read_file, write_file, edit_file, session_state
+from slash_agent.tools import (
+    execute_command, request_user_input, read_skill_instructions,
+    read_file, write_file, edit_file, session_state,
+    list_background_tasks, get_task_logs, kill_background_task, teardown_tasks,
+    wait_seconds
+)
 
 def get_env_diff(shell: str = "bash") -> str:
     """Computes the difference between starting env and current session state env,
@@ -475,7 +480,10 @@ async def main_async():
         "   - Prefer using `edit_file` over `write_file` when making targeted modifications to existing files to minimize overwrite risk.\n"
         "   - To avoid context window bloat when reading large files, you MUST specify `start_line` and `end_line` (1-indexed, inclusive) parameters in your `read_file` tool call to read only the specific range of lines you need.\n"
         "5. **Interacting with the User & Control Flow**:\n"
-        "   - If you need to ask the user a question, clarify a task, or request confirmation/input to proceed, you MUST use the `request_user_input` tool. Do NOT simply output a question or a statement (e.g., 'I will run the commands next' or 'Let me know if that looks right') in your text response, as any response without a tool call will cause the execution session to terminate immediately without prompting or waiting for the user. You must either execute the next step immediately using your tools (e.g., running a command) or call `request_user_input` to get user confirmation/input."
+        "   - If you need to ask the user a question, clarify a task, or request confirmation/input to proceed, you MUST use the `request_user_input` tool. Do NOT simply output a question or a statement (e.g., 'I will run the commands next' or 'Let me know if that looks right') in your text response, as any response without a tool call will cause the execution session to terminate immediately without prompting or waiting for the user. You must either execute the next step immediately using your tools (e.g., running a command) or call `request_user_input` to get user confirmation/input.\n"
+        "6. **Background Task Execution**:\n"
+        "   - For persistent services, watchers, development servers (e.g. `npm run dev`), long-running slow test runs, or parallel executions, you MUST set the `background=True` parameter on your `execute_command` call. This prevents blocking the agent execution loop and returns a `task_id` immediately. You can check task status via `list_background_tasks`, inspect task output logs using `get_task_logs`, or terminate them using `kill_background_task`.\n"
+        "   - When waiting for a background task to progress, you MUST use the native `wait_seconds` tool instead of executing shell-level `sleep` commands. To minimize user waiting latency, you should specify the lowest reasonable duration for the task to complete before calling log/status queries."
     )
     
     # Scan and append agent skills context
@@ -488,7 +496,7 @@ async def main_async():
         tool_execution="sequential",
         initial_state={
             "systemPrompt": system_prompt,
-            "tools": [read_file, write_file, edit_file, execute_command, request_user_input, read_skill_instructions],
+            "tools": [read_file, write_file, edit_file, execute_command, request_user_input, read_skill_instructions, list_background_tasks, get_task_logs, kill_background_task, wait_seconds],
             "thinkingLevel": thinking_level
         }
     )
@@ -647,6 +655,9 @@ async def main_async():
                         os.remove(log_path)
                 except Exception:
                     pass
+                    
+        # Clean up active background tasks unconditionally
+        teardown_tasks()
 
 def main():
     asyncio.run(main_async())

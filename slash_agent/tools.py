@@ -11,6 +11,9 @@ import fcntl
 import struct
 import time
 import difflib
+import subprocess
+import ctypes
+import atexit
 from typing import Dict, Any, Tuple
 from py_agent_core.tool import tool
 
@@ -28,9 +31,81 @@ class ShellState:
         self.unsafe_confirm = False
         self.silent = False
         self.session_logs = []
+        self.active_tasks = {}
+        self.task_counter = 0
 
 # Global session state singleton
 session_state = ShellState()
+
+# Windows Job Object initialization (conditional)
+_win32_job_handle = None
+if sys.platform == "win32":
+    try:
+        import win32job
+        import win32process
+        import win32con
+        # Create a Job Object for the entire session
+        _win32_job_handle = win32job.CreateJobObject(None, "")
+        # Set the job to terminate all processes on close
+        info = win32job.QueryInformationJobObject(_win32_job_handle, win32job.JobObjectExtendedLimitInformation)
+        info['BasicLimitInformation']['LimitFlags'] |= win32job.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+        win32job.SetInformationJobObject(_win32_job_handle, win32job.JobObjectExtendedLimitInformation, info)
+    except Exception:
+        pass
+
+def linux_preexec_fn():
+    # Establish new process group
+    os.setpgrp()
+    # Request SIGTERM when parent terminates
+    try:
+        import ctypes
+        libc = ctypes.CDLL(None)
+        PR_SET_PDEATHSIG = 1
+        SIGTERM = 15
+        libc.prctl(PR_SET_PDEATHSIG, SIGTERM)
+    except Exception:
+        pass
+
+def teardown_tasks():
+    # Kill POSIX process groups or standard processes
+    alive_procs = []
+    for task_id, task_meta in list(session_state.active_tasks.items()):
+        proc = task_meta.get("proc")
+        if proc and proc.poll() is None:
+            alive_procs.append((task_id, proc))
+            try:
+                if sys.platform != "win32":
+                    pgid = os.getpgid(proc.pid)
+                    os.killpg(pgid, signal.SIGTERM)
+                else:
+                    proc.terminate()
+            except Exception:
+                try:
+                    proc.terminate()
+                except Exception:
+                    pass
+                    
+    if alive_procs:
+        time.sleep(0.5)
+        # Check again and kill forcefully if still alive
+        for task_id, proc in alive_procs:
+            if proc.poll() is None:
+                try:
+                    if sys.platform != "win32":
+                        pgid = os.getpgid(proc.pid)
+                        os.killpg(pgid, signal.SIGKILL)
+                    else:
+                        proc.kill()
+                except Exception:
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
+            # Mark finished
+            session_state.active_tasks.pop(task_id, None)
+
+# Register atexit handler
+atexit.register(teardown_tasks)
 
 SENSITIVE_READ_PATHS = [
     "/etc/shadow", "/etc/passwd", "/etc/sudoers", "/etc/sudoers.d/",
@@ -521,15 +596,82 @@ def format_execution_result(exit_code: int, output: str, log_path: str) -> str:
     else:
         return f"Exit code: {exit_code}\nOutput:\n{output}"
 
+def run_command_in_background(command: str) -> str:
+    import tempfile
+    tasks_log_dir = os.path.join(tempfile.gettempdir(), "slash-agent", "tasks")
+    try:
+        os.makedirs(tasks_log_dir, mode=0o700, exist_ok=True)
+        os.chmod(tasks_log_dir, 0o700)
+    except Exception:
+        pass
+        
+    session_state.task_counter += 1
+    task_id = f"task_{session_state.task_counter}"
+    log_path = os.path.join(tasks_log_dir, f"{task_id}.log")
+    
+    session_state.session_logs.append(log_path)
+    
+    try:
+        log_fd = os.open(log_path, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
+        log_file = os.fdopen(log_fd, "wb")
+    except Exception:
+        log_file = open(log_path, "wb")
+        
+    env_to_pass = session_state.env_vars.copy()
+    shell_cmd = f"cd {session_state.cwd} && {command}"
+    
+    popen_args = {
+        "args": ["/bin/bash", "-c", shell_cmd],
+        "env": env_to_pass,
+        "stdout": log_file,
+        "stderr": log_file,
+    }
+    
+    if sys.platform != "win32":
+        popen_args["preexec_fn"] = linux_preexec_fn
+    else:
+        try:
+            import win32con
+            popen_args["creationflags"] = win32con.CREATE_BREAKAWAY_FROM_JOB
+        except Exception:
+            pass
+            
+    try:
+        proc = subprocess.Popen(**popen_args)
+        log_file.close()
+        
+        if sys.platform == "win32" and _win32_job_handle is not None:
+            try:
+                import win32process
+                import win32api
+                proc_handle = win32api.OpenProcess(win32con.PROCESS_ALL_ACCESS, False, proc.pid)
+                win32job.AssignProcessToJobObject(_win32_job_handle, proc_handle.handle)
+            except Exception:
+                pass
+                
+        session_state.active_tasks[task_id] = {
+            "task_id": task_id,
+            "command": command,
+            "proc": proc,
+            "log_path": log_path,
+            "start_time": time.time(),
+        }
+        
+        print(f"\n\033[1;32m✓ Background task {task_id} spawned successfully.\033[0m")
+        return f"Success: Command spawned in the background. Task ID: {task_id}"
+    except Exception as e:
+        return f"Error: Failed to spawn background process. Details: {str(e)}"
 
 @tool
-async def execute_command(command: str, risk_level: str = "low", risk_description: str = "") -> str:
+async def execute_command(command: str, background: bool = False, risk_level: str = "low", risk_description: str = "") -> str:
     """Executes a shell command on the user's system, preserving directory context.
     
     Note: The working directory (CWD) and environment variables are preserved statefully between tool executions.
+    For long-running tasks, watchers, or concurrent execution (e.g. client/server), set background=True to run asynchronously.
     
     Args:
         command: The command line string to run in bash (e.g. 'npm run build').
+        background: Set to True to execute the command asynchronously in the background. Returns a task_id immediately.
         risk_level: The security risk level of the command. MUST be one of: 'safe', 'low', 'moderate', or 'critical'.
         risk_description: A brief explanation of the risk. Must be provided if risk_level is 'moderate' or 'critical'; should be empty for 'safe' or 'low' unless a specific caution applies.
     """
@@ -570,6 +712,8 @@ async def execute_command(command: str, risk_level: str = "low", risk_descriptio
                 print("\n\033[1;31m[Aborted] Command execution cancelled by user.\033[0m")
                 return "Error: Command execution aborted by user during safety countdown."
         print(f"\n\033[1;32m[Agent Running]:\033[0m {command}")
+        if background:
+            return run_command_in_background(command)
         exit_code, output, log_path = run_command_in_pty(command)
         return format_execution_result(exit_code, output, log_path)
         
@@ -594,6 +738,8 @@ async def execute_command(command: str, risk_level: str = "low", risk_descriptio
     else:
         print(f"\033[1;32m[Agent Running]:\033[0m {cmd_to_run}")
         
+    if background:
+        return run_command_in_background(cmd_to_run)
     exit_code, output, log_path = run_command_in_pty(cmd_to_run)
     return format_execution_result(exit_code, output, log_path)
 
@@ -616,6 +762,127 @@ async def request_user_input(prompt: str) -> str:
         print("\n\033[1;31m[Agent Question Aborted]\033[0m")
         # Propagate KeyboardInterrupt to cleanly abort agent execution
         raise KeyboardInterrupt
+
+@tool
+async def list_background_tasks() -> str:
+    """Lists all active background tasks running in the current session and their statuses."""
+    if not session_state.active_tasks:
+        return "No background tasks currently running."
+        
+    lines = []
+    lines.append("Active Background Tasks:")
+    lines.append(f"{'Task ID':<10} | {'Status':<15} | {'Start Time':<20} | {'Command':<30}")
+    lines.append("-" * 80)
+    
+    for task_id, task in list(session_state.active_tasks.items()):
+        proc = task.get("proc")
+        status = "running"
+        if proc:
+            exit_code = proc.poll()
+            if exit_code is not None:
+                status = f"finished ({exit_code})"
+                
+        start_t = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(task.get("start_time", 0)))
+        cmd = task.get("command", "")
+        if len(cmd) > 30:
+            cmd = cmd[:27] + "..."
+            
+        lines.append(f"{task_id:<10} | {status:<15} | {start_t:<20} | {cmd:<30}")
+        
+    return "\n".join(lines)
+
+@tool
+async def get_task_logs(task_id: str, tail_lines: int = 100) -> str:
+    """Retrieves the recent log buffer (stdout/stderr) of a background task.
+    
+    Args:
+        task_id: The ID of the task (e.g. 'task_1').
+        tail_lines: Number of recent log lines to retrieve (default is 100).
+    """
+    if task_id not in session_state.active_tasks:
+        return f"Error: Task ID '{task_id}' not found in active task registry."
+        
+    task = session_state.active_tasks[task_id]
+    log_path = task.get("log_path")
+    if not log_path or not os.path.exists(log_path):
+        return f"Error: Log file not found for task '{task_id}'."
+        
+    try:
+        with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
+            lines = f.readlines()
+            
+        total_lines = len(lines)
+        requested_lines = lines[-tail_lines:] if tail_lines > 0 else lines
+        content = "".join(requested_lines)
+        
+        status = "running"
+        proc = task.get("proc")
+        if proc:
+            exit_code = proc.poll()
+            if exit_code is not None:
+                status = f"finished ({exit_code})"
+                
+        prefix = f"--- Logs for Task '{task_id}' (Status: {status}, showing last {len(requested_lines)} of {total_lines} lines) ---\n"
+        suffix = f"\n--- End Logs for Task '{task_id}' ---"
+        return prefix + content + suffix
+    except Exception as e:
+        return f"Error: Failed to read logs for task '{task_id}'. Details: {str(e)}"
+
+@tool
+async def kill_background_task(task_id: str) -> str:
+    """Forcefully terminates a background task by its ID.
+    
+    Args:
+        task_id: The ID of the task to terminate (e.g. 'task_1').
+    """
+    if task_id not in session_state.active_tasks:
+        return f"Error: Task ID '{task_id}' not found in active task registry."
+        
+    task = session_state.active_tasks[task_id]
+    proc = task.get("proc")
+    
+    if not proc or proc.poll() is not None:
+        session_state.active_tasks.pop(task_id, None)
+        return f"Task '{task_id}' has already finished."
+        
+    try:
+        if sys.platform != "win32":
+            pgid = os.getpgid(proc.pid)
+            os.killpg(pgid, signal.SIGTERM)
+            time.sleep(0.2)
+            if proc.poll() is None:
+                os.killpg(pgid, signal.SIGKILL)
+        else:
+            proc.terminate()
+            time.sleep(0.2)
+            if proc.poll() is None:
+                proc.kill()
+                
+        session_state.active_tasks.pop(task_id, None)
+        print(f"\033[1;31m✓ Background task {task_id} terminated.\033[0m")
+        return f"Success: Forcefully terminated background task '{task_id}'."
+    except Exception as e:
+        try:
+            proc.kill()
+            session_state.active_tasks.pop(task_id, None)
+            return f"Success: Terminated background task '{task_id}' (fallback)."
+        except Exception as fallback_err:
+            return f"Error: Failed to terminate task '{task_id}'. Details: {str(e)} | Fallback details: {str(fallback_err)}"
+
+@tool
+async def wait_seconds(seconds: int) -> str:
+    """Pauses agent execution for a specified number of seconds.
+    
+    Use this tool to wait for background tasks, slow servers, or compilations to progress.
+    You should specify the lowest reasonable duration to minimize wait latency.
+    
+    Args:
+        seconds: The number of seconds to pause (maximum 300).
+    """
+    duration = max(1, min(seconds, 300))
+    print(f"\033[1;30m[Agent waiting for {duration} seconds...]\033[0m", flush=True)
+    await asyncio.sleep(duration)
+    return f"Success: Waited for {duration} seconds."
 
 @tool
 async def read_skill_instructions(skill_path: str) -> str:

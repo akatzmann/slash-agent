@@ -48,3 +48,12 @@ The system technical documentation (`docs/documentation.md`) SHALL be updated to
 #### Scenario: User opens documentation to inspect background execution
 - **WHEN** the user reads `docs/documentation.md`
 - **THEN** they see sections explaining how the background executor operates and lists the active tool commands.
+
+---
+
+### Requirement: Native Pausing Tool
+The system SHALL register a native `wait_seconds` tool accepting a `seconds` integer argument. This tool SHALL pause execution asynchronously using `asyncio.sleep` and SHALL NOT execute subprocess shell commands or prompt the user for confirmation. The system prompt SHALL instruct the model to use the lowest reasonable pause time to minimize user latency.
+
+#### Scenario: Agent pauses execution natively
+- **WHEN** the agent calls `wait_seconds` with `seconds=5`
+- **THEN** the system pauses for 5 seconds without prompting the user and returns confirmation.
