@@ -2,9 +2,7 @@
 
 ## Purpose
 Enforces execution safety boundaries by classifying commands according to risk, overriding LLM risk assessments for known destructive commands, color-coding risk displays, and halting standard auto-confirm mode on critical operations.
-
 ## Requirements
-
 ### Requirement: Tool Risk Parameters
 The system SHALL accept `risk_level` and `risk_description` parameters on the `execute_command` tool. The `risk_description` parameter SHALL be optional for `safe` and `low` risk commands, but SHALL be required for `moderate` and `critical` commands.
 
@@ -15,11 +13,11 @@ The system SHALL accept `risk_level` and `risk_description` parameters on the `e
 ---
 
 ### Requirement: Python Safety Guardrails
-The system SHALL override the agent's risk classification to `critical` if the proposed command matches high-risk administrative or filesystem destructive patterns.
+The system SHALL override the agent's risk classification to `critical` if the proposed command matches high-risk administrative or filesystem destructive patterns. When overriding, the system SHALL concatenate the hardcoded administrative warning with the agent's custom risk description to preserve context.
 
 #### Scenario: Dangerous command pattern override
 - **WHEN** the command contains patterns like `rm -rf` or `sudo `
-- **THEN** the system sets `risk_level` to `critical` and assigns an administrative warning as `risk_description` regardless of the LLM's input.
+- **THEN** the system sets `risk_level` to `critical` and concatenates the administrative warning with the agent's custom `risk_description` (if provided) to display to the user.
 
 ---
 
@@ -69,13 +67,13 @@ When `--unsafe-yes` is active and a `critical`-classified operation (shell comma
 ---
 
 ### Requirement: Python Safety Guardrails for File Operations
-The system SHALL maintain a hardcoded `SENSITIVE_READ_PATHS` list for `read_file` operations and a (superset) `SENSITIVE_WRITE_PATHS` list for `write_file` and `edit_file` operations. Paths SHALL be resolved via `os.path.realpath()` before matching. When the resolved path matches any entry, the system SHALL override the LLM-supplied risk to `critical`, analogous to the existing command pattern overrides for shell execution.
+The system SHALL maintain a hardcoded `SENSITIVE_READ_PATHS` list for `read_file` operations and a (superset) `SENSITIVE_WRITE_PATHS` list for `write_file` and `edit_file` operations. Paths SHALL be resolved via `os.path.realpath()` before matching. When the resolved path matches any entry, the system SHALL override the LLM-supplied risk to `critical`, analogous to the existing command pattern overrides for shell execution. When overriding, the system SHALL concatenate the hardcoded path alert with the agent's custom risk description to preserve context.
 
 #### Scenario: Sensitive read path forced to critical
 - **WHEN** `read_file` is called with a path resolving to a sensitive location (e.g. `/etc/shadow`, `~/.ssh/id_rsa`)
-- **THEN** the system overrides `risk_level` to `critical` regardless of the LLM's input
+- **THEN** the system overrides `risk_level` to `critical` and appends the agent's description to the sensitive path warning.
 
 #### Scenario: Sensitive write path forced to critical
 - **WHEN** `write_file` or `edit_file` is called with a path resolving to a system location (e.g. `/etc/hosts`, `/usr/bin/mybin`)
-- **THEN** the system overrides `risk_level` to `critical` regardless of the LLM's input
+- **THEN** the system overrides `risk_level` to `critical` and appends the agent's description to the sensitive path warning.
 

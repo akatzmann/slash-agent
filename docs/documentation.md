@@ -136,6 +136,7 @@ Configure these variables in your configuration file (defaulting to `~/.config/s
 - `AGENT_THINKING_LEVEL`: Specifies the thinking/reasoning depth level. Valid options are `off` (default), `low`, `medium`, and `high`. Maps to `reasoning_effort` for OpenAI models and toggles thinking options (`think=True`) in Ollama backends (e.g., DeepSeek-R1).
 - `AGENT_TEMPERATURE`: Float value specifying the LLM sampling temperature (e.g. `0.2`). Left blank or unset to use the model's/API's default temperature. Note: OpenAI's o-series reasoning models (such as `o1`/`o3`) do not support custom temperature.
 - `AGENT_TOP_P`: Float value specifying the nucleus sampling probability threshold (e.g. `0.9`). Left blank or unset to use the model's/API's default value. Note: OpenAI's o-series reasoning models do not support custom `top_p`.
+- `AGENT_READ_LINE_LIMIT`: Integer specifying the default maximum line count read by the `read_file` tool before truncation occurs (defaults to `800`).
 
 ### Visual Formatting of Reasoning Stream
 When an agent is configured with a thinking level other than `"off"`, the LLM backend streams reasoning/thinking tokens before generating the final text response. `slash-agent` captures these events (`thinking_delta`) and formats them visually in the terminal:
@@ -215,4 +216,30 @@ For users who want to review every step manually:
    ```bash
    source /path/to/slash-agent/bin/slash-agent.sh
    ```
+
+---
+
+## 7. Background Task Execution
+
+To support persistent operations (e.g. local dev servers, continuous linters, or parallel executions), `slash-agent` provides non-blocking, asynchronous execution capabilities mapped to a stateful registry.
+
+### Spawning Asynchronous Processes
+When executing a command, the agent can pass the parameter `background=True` to bypass the interactive pseudo-terminal (PTY) loop.
+* **Process Spawning:** The task is spawned using `subprocess.Popen` in non-blocking mode.
+* **Logging:** The stdout and stderr are redirected to a volatile log file inside `tempfile.gettempdir() + "/slash-agent/tasks/task_<id>.log"`. The file is created with restricted `0o600` owner-only permissions.
+* **Registry Mapping:** The task metadata and the Popen instance are saved inside `session_state.active_tasks` mapping to a unique task ID (e.g., `task_1`, `task_2`).
+
+### Task Management Tools
+The agent controls background tasks using four dedicated tools:
+1. **`list_background_tasks`**: Returns a formatted list of all active background tasks, their command strings, start times, and execution statuses.
+2. **`get_task_logs(task_id, tail_lines)`**: Reads the volatile task log file on disk and returns the trailing lines to the agent for inspection.
+3. **`kill_background_task(task_id)`**: Forcefully terminates the process group statefully and purges it from the registry.
+4. **`wait_seconds(seconds)`**: Pauses execution statefully using `asyncio.sleep` to let background tasks complete without prompt gating.
+
+### Cross-Platform Cleanup Guarantees (Orphan Prevention)
+To ensure that background tasks do not become orphaned daemons when the agent session ends, the system deploys three layers of termination hooks:
+1. **Orchestrator `finally` / `atexit` Cleanup:** An exit handler reaps all active processes.
+2. **POSIX Process Groups:** On macOS and Linux, processes are spawned in separate process groups using `os.setpgrp()`. During teardown, the system signals the entire process group (`os.killpg`) using `SIGTERM` followed by a forceful `SIGKILL` if still running after a grace period.
+3. **Linux/WSL2 `prctl` Binding:** On Linux hosts (and WSL2), the runner sets `prctl(PR_SET_PDEATHSIG, SIGTERM)` on the child process. The OS kernel reaps the process group automatically if the parent Python orchestrator dies abruptly (e.g., via `SIGKILL`).
+4. **Windows Job Objects:** On Windows hosts, the runner uses `win32job` to assign child processes to a parent-bound Job Object configured with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`. The OS propagates termination immediately when the parent process handle is closed.
 

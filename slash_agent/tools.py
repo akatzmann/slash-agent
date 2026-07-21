@@ -6,6 +6,9 @@ import signal
 import struct
 import time
 import difflib
+import subprocess
+import ctypes
+import atexit
 from typing import Dict, Any, Tuple
 from py_agent_core.tool import tool
 
@@ -33,9 +36,83 @@ class ShellState:
         self.dry_run = False
         self.auto_confirm = False
         self.unsafe_confirm = False
+        self.silent = False
+        self.session_logs = []
+        self.active_tasks = {}
+        self.task_counter = 0
 
 # Global session state singleton
 session_state = ShellState()
+
+# Windows Job Object initialization (conditional)
+_win32_job_handle = None
+if sys.platform == "win32":
+    try:
+        import win32job
+        import win32process
+        import win32con
+        # Create a Job Object for the entire session
+        _win32_job_handle = win32job.CreateJobObject(None, "")
+        # Set the job to terminate all processes on close
+        info = win32job.QueryInformationJobObject(_win32_job_handle, win32job.JobObjectExtendedLimitInformation)
+        info['BasicLimitInformation']['LimitFlags'] |= win32job.JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+        win32job.SetInformationJobObject(_win32_job_handle, win32job.JobObjectExtendedLimitInformation, info)
+    except Exception:
+        pass
+
+def linux_preexec_fn():
+    # Establish new process group
+    os.setpgrp()
+    # Request SIGTERM when parent terminates
+    try:
+        import ctypes
+        libc = ctypes.CDLL(None)
+        PR_SET_PDEATHSIG = 1
+        SIGTERM = 15
+        libc.prctl(PR_SET_PDEATHSIG, SIGTERM)
+    except Exception:
+        pass
+
+def teardown_tasks():
+    # Kill POSIX process groups or standard processes
+    alive_procs = []
+    for task_id, task_meta in list(session_state.active_tasks.items()):
+        proc = task_meta.get("proc")
+        if proc and proc.poll() is None:
+            alive_procs.append((task_id, proc))
+            try:
+                if sys.platform != "win32":
+                    pgid = os.getpgid(proc.pid)
+                    os.killpg(pgid, signal.SIGTERM)
+                else:
+                    proc.terminate()
+            except Exception:
+                try:
+                    proc.terminate()
+                except Exception:
+                    pass
+                    
+    if alive_procs:
+        time.sleep(0.5)
+        # Check again and kill forcefully if still alive
+        for task_id, proc in alive_procs:
+            if proc.poll() is None:
+                try:
+                    if sys.platform != "win32":
+                        pgid = os.getpgid(proc.pid)
+                        os.killpg(pgid, signal.SIGKILL)
+                    else:
+                        proc.kill()
+                except Exception:
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
+            # Mark finished
+            session_state.active_tasks.pop(task_id, None)
+
+# Register atexit handler
+atexit.register(teardown_tasks)
 
 SENSITIVE_READ_PATHS = [
     "/etc/shadow", "/etc/passwd", "/etc/sudoers", "/etc/sudoers.d/",
@@ -131,10 +208,16 @@ def countdown_warning(path: str):
         time.sleep(1)
     print("\033[KProceeding.\n", end="", flush=True)
 
-def prompt_file_confirmation(operation: str, path: str, risk_level: str = "low", risk_description: str = "", preview: str = None) -> Tuple[str, str]:
+def prompt_file_confirmation(operation: str, path: str, risk_level: str = "low", risk_description: str = "", preview: str = None, start_line: int = None, end_line: int = None) -> Tuple[str, str]:
     """Prompts the user to confirm or comment on a proposed file operation."""
     print(f"\n\033[1;33m[Agent] Proposed {operation.upper()}:\033[0m")
-    print(f"  {path}\n")
+    if start_line is not None or end_line is not None:
+        s_val = start_line
+        e_val = end_line
+        range_str = f"Lines {s_val if s_val is not None else 1}-{e_val if e_val is not None else 'EOF'}"
+        print(f"  {path} ({range_str})\n")
+    else:
+        print(f"  {path}\n")
     
     if preview:
         print("\033[1;30m--- Preview ---\033[0m")
@@ -280,7 +363,7 @@ def prompt_user_confirmation(command: str, risk_level: str = "low", risk_descrip
             print("\nAborted.")
             return "no", ""
 
-def run_command_windows(command: str) -> Tuple[int, str]:
+def run_command_windows(command: str) -> Tuple[int, str, str]:
     """Executes a command inside a standard subprocess Popen on Windows,
     capturing and streaming output in real-time.
     """
@@ -356,9 +439,17 @@ def run_command_windows(command: str) -> Tuple[int, str]:
             proc.kill()
         raise KeyboardInterrupt
         
-    return parse_pty_result(accumulated_output, state_buffer)
+    exit_code, cleaned_output = parse_pty_result(accumulated_output, state_buffer)
+    log_file, log_path = create_command_log_file()
+    if log_file:
+        try:
+            log_file.write(cleaned_output)
+            log_file.close()
+        except Exception:
+            pass
+    return exit_code, cleaned_output, log_path
 
-def run_command_in_pty(command: str) -> Tuple[int, str]:
+def run_command_in_pty(command: str) -> Tuple[int, str, str]:
     """Executes a command inside a pseudo-terminal PTY or delegates to Windows runner.
     
     Bridges stdin/stdout/stderr, updates PTY size, traps SIGWINCH, and cleans output.
@@ -385,6 +476,25 @@ def run_command_in_pty(command: str) -> Tuple[int, str]:
     # Save active env dictionary into environment variables
     env_to_pass = session_state.env_vars.copy()
     
+    # Setup temporary logging file
+    import tempfile
+    log_dir = os.path.join(tempfile.gettempdir(), "slash-agent")
+    try:
+        os.makedirs(log_dir, mode=0o700, exist_ok=True)
+        os.chmod(log_dir, 0o700)
+    except Exception:
+        pass
+        
+    run_id = str(int(time.time() * 1000))
+    log_path = os.path.join(log_dir, f"cmd_{run_id}.log")
+    session_state.session_logs.append(log_path)
+    
+    try:
+        log_fd = os.open(log_path, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
+        log_file = os.fdopen(log_fd, "wb")
+    except Exception:
+        log_file = open(log_path, "wb")
+    
     if not is_tty:
         # Fallback: stateless execution using standard subprocess if not a TTY
         import subprocess
@@ -395,12 +505,20 @@ def run_command_in_pty(command: str) -> Tuple[int, str]:
                 capture_output=True,
                 text=False
             )
-            # Standard subprocess run doesn't output to stdout in real-time, but we can capture it.
-            # We separate the output buffer
             combined_output = res.stdout + res.stderr
-            return parse_pty_result(combined_output)
+            try:
+                log_file.write(combined_output)
+                log_file.close()
+            except Exception:
+                pass
+            exit_code, cleaned_output = parse_pty_result(combined_output)
+            return exit_code, cleaned_output, log_path
         except Exception as e:
-            return 1, f"Execution failed: {str(e)}"
+            try:
+                log_file.close()
+            except Exception:
+                pass
+            return 1, f"Execution failed: {str(e)}", log_path
 
     # If it is a TTY, use the pseudo-terminal bridge
     old_tty_settings = termios.tcgetattr(fd_in)
@@ -419,7 +537,7 @@ def run_command_in_pty(command: str) -> Tuple[int, str]:
         set_pty_size(master_fd, rows, cols)
     except Exception:
         pass
-
+ 
     # Setup terminal size resize handler (SIGWINCH)
     def resize_handler(signum, frame):
         try:
@@ -437,6 +555,8 @@ def run_command_in_pty(command: str) -> Tuple[int, str]:
     state_buffer = b""
     token_found = False
     token_bytes = state_token.encode("utf-8")
+    is_collapsed = False
+    spinner_idx = 0
     
     try:
         while True:
@@ -465,26 +585,68 @@ def run_command_in_pty(command: str) -> Tuple[int, str]:
                     idx = temp.find(token_bytes)
                     if idx != -1:
                         token_found = True
-                        # Write the part of output before the token to stdout
                         before_token = temp[len(accumulated_output):idx]
-                        sys.stdout.buffer.write(before_token)
-                        sys.stdout.buffer.flush()
                         
+                        # Log before token output
+                        log_file.write(before_token)
+                        
+                        # Collapse check
+                        if not is_collapsed and (len(accumulated_output) + len(before_token) > 50000 or (accumulated_output + before_token).count(b"\n") > 500):
+                            is_collapsed = True
+                            if not session_state.silent:
+                                sys.stdout.write("\n\033[1;33m[Warning: Output exceeds 500 lines/50KB. Collapsing stdout display to spinner...]\033[0m\n")
+                                sys.stdout.flush()
+                                
+                        if not session_state.silent and not is_collapsed:
+                            sys.stdout.buffer.write(before_token)
+                            sys.stdout.buffer.flush()
+                        elif is_collapsed and not session_state.silent:
+                            spinner_chars = ["|", "/", "-", "\\"]
+                            spinner_idx = (spinner_idx + 1) % 4
+                            sys.stdout.write(f"\rStreaming output... {spinner_chars[spinner_idx]}")
+                            sys.stdout.flush()
+                            
                         accumulated_output = temp[:idx]
                         state_buffer = temp[idx:]
                     else:
-                        sys.stdout.buffer.write(data)
-                        sys.stdout.buffer.flush()
+                        log_file.write(data)
+                        
+                        # Collapse check
+                        if not is_collapsed and (len(accumulated_output) + len(data) > 50000 or (accumulated_output + data).count(b"\n") > 500):
+                            is_collapsed = True
+                            if not session_state.silent:
+                                sys.stdout.write("\n\033[1;33m[Warning: Output exceeds 500 lines/50KB. Collapsing stdout display to spinner...]\033[0m\n")
+                                sys.stdout.flush()
+                                
+                        if not session_state.silent and not is_collapsed:
+                            sys.stdout.buffer.write(data)
+                            sys.stdout.buffer.flush()
+                        elif is_collapsed and not session_state.silent:
+                            spinner_chars = ["|", "/", "-", "\\"]
+                            spinner_idx = (spinner_idx + 1) % 4
+                            sys.stdout.write(f"\rStreaming output... {spinner_chars[spinner_idx]}")
+                            sys.stdout.flush()
+                            
                         accumulated_output += data
                 else:
                     state_buffer += data
     finally:
+        # Close log file
+        try:
+            log_file.close()
+        except Exception:
+            pass
+        # Clear spinner line if collapsed
+        if is_collapsed and not session_state.silent:
+            sys.stdout.write("\r" + " " * 45 + "\r")
+            sys.stdout.flush()
         # Restore terminal settings and clear SIGWINCH signal handler
         termios.tcsetattr(fd_in, termios.TCSADRAIN, old_tty_settings)
         signal.signal(signal.SIGWINCH, signal.SIG_DFL)
         
     # Parse exit status
-    return parse_pty_result(accumulated_output, state_buffer)
+    exit_code, cleaned_output = parse_pty_result(accumulated_output, state_buffer)
+    return exit_code, cleaned_output, log_path
 
 def parse_pty_result(command_output: bytes, state_buffer: bytes = b"") -> Tuple[int, str]:
     """Parses PTY output buffers, updating working dir/env and returning command logs."""
@@ -531,14 +693,112 @@ def parse_pty_result(command_output: bytes, state_buffer: bytes = b"") -> Tuple[
     cleaned_output = strip_ansi(command_output.decode("utf-8", errors="ignore"))
     return exit_code, cleaned_output
 
+def format_execution_result(exit_code: int, output: str, log_path: str) -> str:
+    if session_state.silent and exit_code != 0:
+        sys.stdout.write(f"\n\033[1;31m[Error] Command failed with exit code {exit_code}. Dumping full logs:\033[0m\n")
+        sys.stdout.write(output)
+        if not output.endswith("\n"):
+            sys.stdout.write("\n")
+        sys.stdout.flush()
+        
+    output_lines = output.splitlines()
+    limit_bytes = 20000
+    limit_lines = 200
+    
+    if len(output) >= limit_bytes or len(output_lines) >= limit_lines:
+        first_50 = output_lines[:50]
+        last_100 = output_lines[-100:]
+        truncated_preview = "\n".join(first_50) + "\n\n... [LINES OMITTED] ...\n\n" + "\n".join(last_100)
+        
+        result_msg = (
+            f"Exit code: {exit_code}\n"
+            f"[Output Truncated: Size {len(output) // 1024}KB, {len(output_lines)} lines. "
+            f"Full logs written to '{log_path}'.]\n"
+            f"--- LOG PREVIEW (First 50 and last 100 lines) ---\n"
+            f"{truncated_preview}\n"
+            f"--- END LOG PREVIEW ---\n"
+            f"[Use the read_file tool with start_line/end_line to inspect specific segments of the log file '{log_path}' if needed.]"
+        )
+        return result_msg
+    else:
+        return f"Exit code: {exit_code}\nOutput:\n{output}"
+
+def run_command_in_background(command: str) -> str:
+    import tempfile
+    tasks_log_dir = os.path.join(tempfile.gettempdir(), "slash-agent", "tasks")
+    try:
+        os.makedirs(tasks_log_dir, mode=0o700, exist_ok=True)
+        os.chmod(tasks_log_dir, 0o700)
+    except Exception:
+        pass
+        
+    session_state.task_counter += 1
+    task_id = f"task_{session_state.task_counter}"
+    log_path = os.path.join(tasks_log_dir, f"{task_id}.log")
+    
+    session_state.session_logs.append(log_path)
+    
+    try:
+        log_fd = os.open(log_path, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
+        log_file = os.fdopen(log_fd, "wb")
+    except Exception:
+        log_file = open(log_path, "wb")
+        
+    env_to_pass = session_state.env_vars.copy()
+    shell_cmd = f"cd {session_state.cwd} && {command}"
+    
+    popen_args = {
+        "args": ["/bin/bash", "-c", shell_cmd],
+        "env": env_to_pass,
+        "stdout": log_file,
+        "stderr": log_file,
+    }
+    
+    if sys.platform != "win32":
+        popen_args["preexec_fn"] = linux_preexec_fn
+    else:
+        try:
+            import win32con
+            popen_args["creationflags"] = win32con.CREATE_BREAKAWAY_FROM_JOB
+        except Exception:
+            pass
+            
+    try:
+        proc = subprocess.Popen(**popen_args)
+        log_file.close()
+        
+        if sys.platform == "win32" and _win32_job_handle is not None:
+            try:
+                import win32process
+                import win32api
+                proc_handle = win32api.OpenProcess(win32con.PROCESS_ALL_ACCESS, False, proc.pid)
+                win32job.AssignProcessToJobObject(_win32_job_handle, proc_handle.handle)
+            except Exception:
+                pass
+                
+        session_state.active_tasks[task_id] = {
+            "task_id": task_id,
+            "command": command,
+            "proc": proc,
+            "log_path": log_path,
+            "start_time": time.time(),
+        }
+        
+        print(f"\n\033[1;32m✓ Background task {task_id} spawned successfully.\033[0m")
+        return f"Success: Command spawned in the background. Task ID: {task_id}"
+    except Exception as e:
+        return f"Error: Failed to spawn background process. Details: {str(e)}"
+
 @tool
-async def execute_command(command: str, risk_level: str = "low", risk_description: str = "") -> str:
+async def execute_command(command: str, background: bool = False, risk_level: str = "low", risk_description: str = "") -> str:
     """Executes a shell command on the user's system, preserving directory context.
     
     Note: The working directory (CWD) and environment variables are preserved statefully between tool executions.
+    For long-running tasks, watchers, or concurrent execution (e.g. client/server), set background=True to run asynchronously.
     
     Args:
         command: The command line string to run in bash (e.g. 'npm run build').
+        background: Set to True to execute the command asynchronously in the background. Returns a task_id immediately.
         risk_level: The security risk level of the command. MUST be one of: 'safe', 'low', 'moderate', or 'critical'.
         risk_description: A brief explanation of the risk. Must be provided if risk_level is 'moderate' or 'critical'; should be empty for 'safe' or 'low' unless a specific caution applies.
     """
@@ -554,13 +814,15 @@ async def execute_command(command: str, risk_level: str = "low", risk_descriptio
     ]
     if any(pat in cmd_lower for pat in critical_patterns):
         level = "critical"
-        desc = "Command contains administrative or destructive file-system operations (e.g., rm, sudo, chown, remove-item, runas)."
+        warning = "Command contains administrative or destructive file-system operations (e.g., rm, sudo, chown, remove-item, runas)."
+        desc = f"[System Warning] {warning} | [Model Reason] {desc}" if desc else f"[System Warning] {warning}"
     
     # Elevate risk to moderate for script executions/other shells if not already higher
     script_patterns = ["./", ".\\", "sh ", "bash ", "python ", "make ", "npx ", "npm run ", "powershell ", "pwsh ", "cmd "]
     if level in ("safe", "low") and any(pat in cmd_lower for pat in script_patterns):
         level = "moderate"
-        desc = "Command executes a local script, runner, or makefile."
+        warning = "Command executes a local script, runner, or makefile."
+        desc = f"[System Warning] {warning} | [Model Reason] {desc}" if desc else f"[System Warning] {warning}"
         
     if session_state.dry_run:
         print(f"\n\033[1;34m[Dry-run] Would execute:\033[0m {command}")
@@ -580,8 +842,10 @@ async def execute_command(command: str, risk_level: str = "low", risk_descriptio
                 print("\n\033[1;31m[Aborted] Command execution cancelled by user.\033[0m")
                 return "Error: Command execution aborted by user during safety countdown."
         print(f"\n\033[1;32m[Agent Running]:\033[0m {command}")
-        exit_code, output = run_command_in_pty(command)
-        return f"Exit code: {exit_code}\nOutput:\n{output}"
+        if background:
+            return run_command_in_background(command)
+        exit_code, output, log_path = run_command_in_pty(command)
+        return format_execution_result(exit_code, output, log_path)
         
     # Prompt the user for confirmation
     action, cmd_to_run = prompt_user_confirmation(command, risk_level=level, risk_description=desc)
@@ -598,14 +862,16 @@ async def execute_command(command: str, risk_level: str = "low", risk_descriptio
         except KeyboardInterrupt:
             print("\n\033[1;31m[Aborted] Command execution cancelled by user.\033[0m")
             return "Error: Command execution aborted by user during safety countdown."
-
+ 
     if action == "edit":
         print(f"\033[1;32m[Agent Running Edited Command]:\033[0m {cmd_to_run}")
     else:
         print(f"\033[1;32m[Agent Running]:\033[0m {cmd_to_run}")
         
-    exit_code, output = run_command_in_pty(cmd_to_run)
-    return f"Exit code: {exit_code}\nOutput:\n{output}"
+    if background:
+        return run_command_in_background(cmd_to_run)
+    exit_code, output, log_path = run_command_in_pty(cmd_to_run)
+    return format_execution_result(exit_code, output, log_path)
 
 @tool
 async def request_user_input(prompt: str) -> str:
@@ -626,6 +892,127 @@ async def request_user_input(prompt: str) -> str:
         print("\n\033[1;31m[Agent Question Aborted]\033[0m")
         # Propagate KeyboardInterrupt to cleanly abort agent execution
         raise KeyboardInterrupt
+
+@tool
+async def list_background_tasks() -> str:
+    """Lists all active background tasks running in the current session and their statuses."""
+    if not session_state.active_tasks:
+        return "No background tasks currently running."
+        
+    lines = []
+    lines.append("Active Background Tasks:")
+    lines.append(f"{'Task ID':<10} | {'Status':<15} | {'Start Time':<20} | {'Command':<30}")
+    lines.append("-" * 80)
+    
+    for task_id, task in list(session_state.active_tasks.items()):
+        proc = task.get("proc")
+        status = "running"
+        if proc:
+            exit_code = proc.poll()
+            if exit_code is not None:
+                status = f"finished ({exit_code})"
+                
+        start_t = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(task.get("start_time", 0)))
+        cmd = task.get("command", "")
+        if len(cmd) > 30:
+            cmd = cmd[:27] + "..."
+            
+        lines.append(f"{task_id:<10} | {status:<15} | {start_t:<20} | {cmd:<30}")
+        
+    return "\n".join(lines)
+
+@tool
+async def get_task_logs(task_id: str, tail_lines: int = 100) -> str:
+    """Retrieves the recent log buffer (stdout/stderr) of a background task.
+    
+    Args:
+        task_id: The ID of the task (e.g. 'task_1').
+        tail_lines: Number of recent log lines to retrieve (default is 100).
+    """
+    if task_id not in session_state.active_tasks:
+        return f"Error: Task ID '{task_id}' not found in active task registry."
+        
+    task = session_state.active_tasks[task_id]
+    log_path = task.get("log_path")
+    if not log_path or not os.path.exists(log_path):
+        return f"Error: Log file not found for task '{task_id}'."
+        
+    try:
+        with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
+            lines = f.readlines()
+            
+        total_lines = len(lines)
+        requested_lines = lines[-tail_lines:] if tail_lines > 0 else lines
+        content = "".join(requested_lines)
+        
+        status = "running"
+        proc = task.get("proc")
+        if proc:
+            exit_code = proc.poll()
+            if exit_code is not None:
+                status = f"finished ({exit_code})"
+                
+        prefix = f"--- Logs for Task '{task_id}' (Status: {status}, showing last {len(requested_lines)} of {total_lines} lines) ---\n"
+        suffix = f"\n--- End Logs for Task '{task_id}' ---"
+        return prefix + content + suffix
+    except Exception as e:
+        return f"Error: Failed to read logs for task '{task_id}'. Details: {str(e)}"
+
+@tool
+async def kill_background_task(task_id: str) -> str:
+    """Forcefully terminates a background task by its ID.
+    
+    Args:
+        task_id: The ID of the task to terminate (e.g. 'task_1').
+    """
+    if task_id not in session_state.active_tasks:
+        return f"Error: Task ID '{task_id}' not found in active task registry."
+        
+    task = session_state.active_tasks[task_id]
+    proc = task.get("proc")
+    
+    if not proc or proc.poll() is not None:
+        session_state.active_tasks.pop(task_id, None)
+        return f"Task '{task_id}' has already finished."
+        
+    try:
+        if sys.platform != "win32":
+            pgid = os.getpgid(proc.pid)
+            os.killpg(pgid, signal.SIGTERM)
+            time.sleep(0.2)
+            if proc.poll() is None:
+                os.killpg(pgid, signal.SIGKILL)
+        else:
+            proc.terminate()
+            time.sleep(0.2)
+            if proc.poll() is None:
+                proc.kill()
+                
+        session_state.active_tasks.pop(task_id, None)
+        print(f"\033[1;31m✓ Background task {task_id} terminated.\033[0m")
+        return f"Success: Forcefully terminated background task '{task_id}'."
+    except Exception as e:
+        try:
+            proc.kill()
+            session_state.active_tasks.pop(task_id, None)
+            return f"Success: Terminated background task '{task_id}' (fallback)."
+        except Exception as fallback_err:
+            return f"Error: Failed to terminate task '{task_id}'. Details: {str(e)} | Fallback details: {str(fallback_err)}"
+
+@tool
+async def wait_seconds(seconds: int) -> str:
+    """Pauses agent execution for a specified number of seconds.
+    
+    Use this tool to wait for background tasks, slow servers, or compilations to progress.
+    You should specify the lowest reasonable duration to minimize wait latency.
+    
+    Args:
+        seconds: The number of seconds to pause (maximum 300).
+    """
+    duration = max(1, min(seconds, 300))
+    print(f"\033[1;30m[Agent waiting for {duration} seconds...]\033[0m", flush=True)
+    await asyncio.sleep(duration)
+    return f"Success: Waited for {duration} seconds."
 
 @tool
 async def read_skill_instructions(skill_path: str) -> str:
@@ -653,14 +1040,56 @@ async def read_skill_instructions(skill_path: str) -> str:
         return f"Error reading skill file: {str(e)}"
 
 
-@tool
-async def read_file(path: str, risk_level: str = "low", risk_description: str = "") -> str:
-    """Reads the complete contents of a file on the user's system.
+def read_file_content(resolved_path: str, start_line: int = None, end_line: int = None) -> str:
+    with open(resolved_path, "r", encoding="utf-8", errors="ignore") as f:
+        lines = f.readlines()
+    total_lines = len(lines)
     
-    Paths can be absolute or relative to the working directory.
+    try:
+        limit_str = os.environ.get("AGENT_READ_LINE_LIMIT", "800")
+        limit = int(limit_str)
+        if limit <= 0:
+            limit = 800
+    except ValueError:
+        limit = 800
+        
+    if start_line is not None or end_line is not None:
+        s = 1 if start_line is None else int(start_line)
+        e = total_lines if end_line is None else int(end_line)
+        
+        s = max(1, min(s, total_lines)) if total_lines > 0 else 1
+        e = max(s, min(e, total_lines)) if total_lines > 0 else 1
+        
+        requested_count = e - s + 1
+        if requested_count > 1000:
+            e = s + 1000 - 1
+            truncated_lines = lines[s-1:e]
+            content = "".join(truncated_lines)
+            content += f"\n\n[File Truncated: Read range lines {s}-{e} of {total_lines} total lines. Requested range exceeded the maximum limit of 1000 lines.]"
+            return content
+        else:
+            truncated_lines = lines[s-1:e]
+            return "".join(truncated_lines)
+    else:
+        if total_lines > limit:
+            truncated_lines = lines[:limit]
+            content = "".join(truncated_lines)
+            content += f"\n\n[File Truncated: Read lines 1-{limit} of {total_lines} total lines. Use read_file with start_line and end_line parameters to read remaining segments, e.g. start_line={limit+1}, end_line={min(limit * 2, total_lines)}.]"
+            return content
+        else:
+            return "".join(lines)
+
+
+@tool
+async def read_file(path: str, start_line: int = None, end_line: int = None, risk_level: str = "low", risk_description: str = "") -> str:
+    """Reads the contents of a file on the user's system.
+    
+    Paths can be absolute or relative to the working directory. For large files, specify start_line and end_line (1-indexed, inclusive) to avoid context bloat.
     
     Args:
         path: The filesystem path to read.
+        start_line: Optional starting line number (1-indexed, inclusive).
+        end_line: Optional ending line number (1-indexed, inclusive).
         risk_level: The security risk level of the read. MUST be one of: 'safe', 'low', 'moderate', or 'critical'.
         risk_description: A brief explanation of the risk. Must be provided if risk_level is 'moderate' or 'critical'.
     """
@@ -671,7 +1100,8 @@ async def read_file(path: str, risk_level: str = "low", risk_description: str = 
     desc = risk_description.strip()
     if is_sensitive:
         level = "critical"
-        desc = f"Accessing sensitive system path: {resolved_path}"
+        warning = f"Accessing sensitive system path: {resolved_path}"
+        desc = f"[System Warning] {warning} | [Model Reason] {desc}" if desc else f"[System Warning] {warning}"
         
     # Apply tiered auto-confirm
     can_auto_confirm = session_state.auto_confirm
@@ -687,15 +1117,14 @@ async def read_file(path: str, risk_level: str = "low", risk_description: str = 
                 return "Error: Read operation aborted by user during countdown."
             
         try:
-            with open(resolved_path, "r", encoding="utf-8", errors="ignore") as f:
-                return f.read()
+            return read_file_content(resolved_path, start_line, end_line)
         except PermissionError as e:
             return f"Error: Permission denied reading file '{resolved_path}'. Details: {str(e)}"
         except Exception as e:
             return f"Error: Failed to read file '{resolved_path}'. Details: {str(e)}"
 
     # Prompt user for confirmation
-    action, comment = prompt_file_confirmation("READ", resolved_path, risk_level=level, risk_description=desc)
+    action, comment = prompt_file_confirmation("READ", resolved_path, risk_level=level, risk_description=desc, start_line=start_line, end_line=end_line)
     
     if action == "no":
         return "Error: Read operation rejected by user."
@@ -703,8 +1132,7 @@ async def read_file(path: str, risk_level: str = "low", risk_description: str = 
         return f"Error: Read operation rejected by user. Feedback: {comment}"
         
     try:
-        with open(resolved_path, "r", encoding="utf-8", errors="ignore") as f:
-            return f.read()
+        return read_file_content(resolved_path, start_line, end_line)
     except PermissionError as e:
         return f"Error: Permission denied reading file '{resolved_path}'. Details: {str(e)}"
     except Exception as e:
@@ -730,10 +1158,12 @@ async def write_file(path: str, content: str, risk_level: str = "low", risk_desc
     desc = risk_description.strip()
     if is_sensitive:
         level = "critical"
-        desc = f"Writing to sensitive system path: {resolved_path}"
+        warning = f"Writing to sensitive system path: {resolved_path}"
+        desc = f"[System Warning] {warning} | [Model Reason] {desc}" if desc else f"[System Warning] {warning}"
     elif is_outside_workspace(resolved_path):
         level = "critical"
-        desc = f"Writing to path outside launching workspace directory ({session_state.initial_cwd}): {resolved_path}"
+        warning = f"Writing to path outside launching workspace directory ({session_state.initial_cwd}): {resolved_path}"
+        desc = f"[System Warning] {warning} | [Model Reason] {desc}" if desc else f"[System Warning] {warning}"
         
     # Apply tiered auto-confirm
     can_auto_confirm = session_state.auto_confirm
@@ -834,10 +1264,12 @@ async def edit_file(path: str, old_str: str, new_str: str, risk_level: str = "lo
     desc = risk_description.strip()
     if is_sensitive:
         level = "critical"
-        desc = f"Editing sensitive system file: {resolved_path}"
+        warning = f"Editing sensitive system file: {resolved_path}"
+        desc = f"[System Warning] {warning} | [Model Reason] {desc}" if desc else f"[System Warning] {warning}"
     elif is_outside_workspace(resolved_path):
         level = "critical"
-        desc = f"Editing file outside launching workspace directory ({session_state.initial_cwd}): {resolved_path}"
+        warning = f"Editing file outside launching workspace directory ({session_state.initial_cwd}): {resolved_path}"
+        desc = f"[System Warning] {warning} | [Model Reason] {desc}" if desc else f"[System Warning] {warning}"
         
     # Read current content and validate uniqueness of old_str
     try:

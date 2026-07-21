@@ -157,8 +157,8 @@ During execution on Windows, the subprocess runner SHALL append statements to ou
 When running in a PowerShell host session, the python orchestrator SHALL output PowerShell-compatible state synchronization statements to `$SYNC_FILE` (using `$env:KEY = 'value'` for environment variables and `Set-Location -LiteralPath` for directory changes), which the wrapper sources on exit.
 
 #### Scenario: State synchronization in PowerShell
-- **WHEN** the agent changes the active directory and sets environment variables, then exits
-- **THEN** the parent PowerShell session executes the statements in the sync file to update its active PWD and environment variables.
+- **WHEN** the agent completes command execution in a PowerShell session
+- **THEN** the temporary sync file (e.g. `tmpXXXX.ps1`) is dot-sourced without launching any external file association dialogue or editor.
 
 ### Requirement: System Prompt Environment Awareness
 The python orchestrator SHALL prepend OS name, user's interactive shell, command execution shell, path separator, and working directory metadata to the system prompt to ensure the LLM structures file paths and CLI commands matching the host environment and target execution subshell.
@@ -192,3 +192,94 @@ The system SHALL filter out empty environment variable keys and keys starting wi
 - **WHEN** process environment output parsing or shell environment diff generation executes
 - **THEN** internal drive variables (such as `=C:`) and empty key strings are ignored and excluded from generated shell sync scripts.
 
+### Requirement: Selective Command Output Streaming
+During command execution, if the accumulated output exceeds 50KB or 500 lines, the system SHALL collapse the live terminal output to a status indicator, and SHALL return a truncated preview (the first 50 and last 100 lines) to the agent.
+
+#### Scenario: Verbose command triggers selective streaming collapse
+- **WHEN** the agent runs a command that outputs 1500 lines of build logs
+- **THEN** the system collapses the terminal output display to a status spinner and returns a truncated preview of the logs (first 50 and last 100 lines) with a truncation notice.
+
+---
+
+### Requirement: Silent Execution Mode
+The system SHALL support a `--silent` command-line flag. When active, all command execution outputs SHALL be hidden from the user's terminal (excluding manual confirmation prompts). If a command fails (exit code != 0), the system SHALL automatically output the entire log buffer to the terminal.
+
+#### Scenario: Silent command fails and dumps log
+- **WHEN** `--silent` is enabled and a command fails
+- **THEN** the system outputs the full captured log to the terminal for debugging.
+
+---
+
+### Requirement: Unified Transient Command Logging
+The system SHALL write the full multiplexed stdout/stderr of every command execution to a unique transient log file stored inside the cross-platform system temporary directory (`tempfile.gettempdir()`). To prevent other local users from reading sensitive console output on shared environments, the system SHALL enforce owner-only read/write permissions (e.g. file mode `0o600` on POSIX systems or equivalent Windows ACLs) on the generated log files and their parent folders. If the command output is large (>=20KB), the tool completion message SHALL include the path of the log file, the size, the total number of lines, and a preview, allowing the agent to paginate the log using the `read_file` tool.
+
+#### Scenario: Large output log path returned to agent
+- **WHEN** a command executes and generates 250KB of output
+- **THEN** the system writes the output to `<temp_dir>/slash-agent/cmd_<run_id>.log` with owner-only permissions and returns the log path and preview to the agent.
+
+---
+
+### Requirement: Clean Session Log Cleanup
+To prevent disk clutter, the system SHALL track all transient log files created during the session and delete them upon clean exit of the main agent loop. If the agent terminates abnormally or crashes, the log files SHALL remain intact to permit diagnostics.
+
+#### Scenario: Clean exit deletes session logs
+- **WHEN** the agent finishes all tasks and exits cleanly
+- **THEN** all transient log files created during the current session are deleted.
+
+### Requirement: Background Process Execution
+The system SHALL support running commands asynchronously in the background when the agent calls `execute_command` with a `background=True` parameter. Upon spawning, the system SHALL immediately return a unique `task_id` string rather than blocking.
+
+#### Scenario: Running a background server process
+- **WHEN** the agent calls `execute_command` with `command="npm run dev"` and `background=True`
+- **THEN** the system spawns the process asynchronously and returns a unique task identifier (e.g. `task_1`) immediately.
+
+---
+
+### Requirement: Session-Bound Task Manager
+The system SHALL maintain a global session process registry mapping active background tasks. On agent session termination (whether clean, crashed, or aborted), the system SHALL execute a teardown handler that terminates all registered background subprocesses:
+- On POSIX, the system SHALL spawn child subprocesses in separate process groups and send `SIGTERM` followed by `SIGKILL` (after a 3-second grace period) to the entire process group.
+- On Windows, the system SHALL associate child processes with an OS Job Object to propagate parent exit terminations automatically.
+- On Linux/WSL2, the system SHALL conditionally leverage `prctl(PR_SET_PDEATHSIG, SIGTERM)` on process spawn.
+
+#### Scenario: Agent terminates and reaps active background tasks
+- **WHEN** the agent session exits while background processes are running
+- **THEN** the teardown handler runs and terminates all active background tasks, preventing orphaned processes.
+
+---
+
+### Requirement: Background Task Control Interfaces
+The system SHALL register three new tools:
+1. `list_background_tasks`: Returns a list of active tasks with their status.
+2. `get_task_logs`: Takes a `task_id` and optional `tail_lines` and returns the recent log buffer.
+3. `kill_background_task`: Takes a `task_id` and forcefully terminates that task.
+
+#### Scenario: Agent kills a background task
+- **WHEN** the agent calls `kill_background_task` with a valid active `task_id`
+- **THEN** the system terminates the subprocess and returns confirmation.
+
+---
+
+### Requirement: Tool Parameters & System Prompts for Backgrounding
+The `background` parameter on `execute_command` SHALL be documented in the tool schema docstring to specify that it must be set to `true` when spawning persistent processes (e.g., servers, watchers), when executing tasks in parallel (e.g., concurrent client/server executions), or when running long-running operations (e.g., slow builds, test suites) that the agent wants to inspect irregularly while continuing work. The model system prompt SHALL instruct the agent to apply this logic, leaving the parallel scheduling and backgrounding decision entirely to the model's discretion.
+
+#### Scenario: Agent checks tool schema for parallel command execution
+- **WHEN** the agent inspects the tool schemas to decide how to run a client/server test concurrently
+- **THEN** it sets `background=true` based on the schema guidelines to run the server in the background before spawning the client.
+
+---
+
+### Requirement: Documentation Update for Background Tasks
+The system technical documentation (`docs/documentation.md`) SHALL be updated to describe the background task manager architecture, active task management tools, platform-specific cleanup boundaries (Job Objects, process groups, `prctl`), and CLI command logging flows.
+
+#### Scenario: User opens documentation to inspect background execution
+- **WHEN** the user reads `docs/documentation.md`
+- **THEN** they see sections explaining how the background executor operates and lists the active tool commands.
+
+---
+
+### Requirement: Native Pausing Tool
+The system SHALL register a native `wait_seconds` tool accepting a `seconds` integer argument. This tool SHALL pause execution asynchronously using `asyncio.sleep` and SHALL NOT execute subprocess shell commands or prompt the user for confirmation. The system prompt SHALL instruct the model to use the lowest reasonable pause time to minimize user latency.
+
+#### Scenario: Agent pauses execution natively
+- **WHEN** the agent calls `wait_seconds` with `seconds=5`
+- **THEN** the system pauses for 5 seconds without prompting the user and returns confirmation.

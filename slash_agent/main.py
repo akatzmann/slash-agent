@@ -290,7 +290,12 @@ def build_skills_prompt(skills: list[dict[str, str]]) -> str:
 
 # Import agent and tools (ensuring tools capture the sanitized os.environ in session_state)
 from py_agent_core.agent import Agent
-from slash_agent.tools import execute_command, request_user_input, read_skill_instructions, read_file, write_file, edit_file, session_state
+from slash_agent.tools import (
+    execute_command, request_user_input, read_skill_instructions,
+    read_file, write_file, edit_file, session_state,
+    list_background_tasks, get_task_logs, kill_background_task, teardown_tasks,
+    wait_seconds
+)
 
 def pwsh_quote(val: str) -> str:
     """Escapes single quotes and wraps string for PowerShell compatibility."""
@@ -339,6 +344,7 @@ async def main_async():
     parser.add_argument("-y", "--yes", action="store_true", help="Auto-confirm all commands")
     parser.add_argument("--unsafe-yes", action="store_true", help="Auto-confirm even critical/dangerous commands")
     parser.add_argument("-n", "--dry-run", action="store_true", help="Dry run simulation mode")
+    parser.add_argument("-s", "--silent", action="store_true", help="Run command executions silently without stdout prints")
     parser.add_argument("prompt", nargs="*", help="The user prompt or task")
     
     args = parser.parse_args()
@@ -347,6 +353,7 @@ async def main_async():
     session_state.auto_confirm = args.yes or args.unsafe_yes
     session_state.unsafe_confirm = args.unsafe_yes
     session_state.dry_run = args.dry_run
+    session_state.silent = args.silent
     
     # Read captured context
     captured_context = ""
@@ -514,6 +521,7 @@ async def main_async():
         "   - Prefer non-interactive flags (e.g., `-y`, `-m`) to avoid blocking standard input.\n"
         "   - Do NOT run interactive text editors (e.g., `nano`, `vim`).\n"
         "   - Do NOT run endless commands without limits/timeouts (e.g., use `ping -c 4`, not raw `ping`; avoid `tail -f`).\n"
+        "   - Minimize command output size without sacrificing diagnostic detail. Prefer targeted filters (e.g., `git diff --stat` before `git diff`, grep for errors, etc.) and restrict output sizes. Ensure that relevant traceback or compilation error messages are still fully captured.\n"
         "2. **Error Recovery**:\n"
         "   - Inspect exit codes and stderr of execution outputs. If a command fails, explore the workspace, view relevant files, and resolve the issue with an alternative command.\n"
         "3. **Task Completion & Stopping**:\n"
@@ -522,8 +530,12 @@ async def main_async():
         "   - You MUST use the native file tools (`read_file`, `write_file`, `edit_file`) instead of shell commands (like `cat`, `grep`, `echo`, `sed`, `tee`) for reading, writing, and editing files. Native tools provide diff inspection and safety guardrails.\n"
         "   - Paths can be relative to the active working directory or absolute.\n"
         "   - Prefer using `edit_file` over `write_file` when making targeted modifications to existing files to minimize overwrite risk.\n"
+        "   - To avoid context window bloat when reading large files, you MUST specify `start_line` and `end_line` (1-indexed, inclusive) parameters in your `read_file` tool call to read only the specific range of lines you need.\n"
         "5. **Interacting with the User & Control Flow**:\n"
-        "   - If you need to ask the user a question, clarify a task, or request confirmation/input to proceed, you MUST use the `request_user_input` tool. Do NOT simply output a question or a statement (e.g., 'I will run the commands next' or 'Let me know if that looks right') in your text response, as any response without a tool call will cause the execution session to terminate immediately without prompting or waiting for the user. You must either execute the next step immediately using your tools (e.g., running a command) or call `request_user_input` to get user confirmation/input."
+        "   - If you need to ask the user a question, clarify a task, or request confirmation/input to proceed, you MUST use the `request_user_input` tool. Do NOT simply output a question or a statement (e.g., 'I will run the commands next' or 'Let me know if that looks right') in your text response, as any response without a tool call will cause the execution session to terminate immediately without prompting or waiting for the user. You must either execute the next step immediately using your tools (e.g., running a command) or call `request_user_input` to get user confirmation/input.\n"
+        "6. **Background Task Execution**:\n"
+        "   - For persistent services, watchers, development servers (e.g. `npm run dev`), long-running slow test runs, or parallel executions, you MUST set the `background=True` parameter on your `execute_command` call. This prevents blocking the agent execution loop and returns a `task_id` immediately. You can check task status via `list_background_tasks`, inspect task output logs using `get_task_logs`, or terminate them using `kill_background_task`.\n"
+        "   - When waiting for a background task to progress, you MUST use the native `wait_seconds` tool instead of executing shell-level `sleep` commands. To minimize user waiting latency, you should specify the lowest reasonable duration for the task to complete before calling log/status queries."
     )
     
     # Scan and append agent skills context
@@ -536,12 +548,13 @@ async def main_async():
         tool_execution="sequential",
         initial_state={
             "systemPrompt": system_prompt,
-            "tools": [read_file, write_file, edit_file, execute_command, request_user_input, read_skill_instructions],
+            "tools": [read_file, write_file, edit_file, execute_command, request_user_input, read_skill_instructions, list_background_tasks, get_task_logs, kill_background_task, wait_seconds],
             "thinkingLevel": thinking_level
         }
     )
     
     # Run agent streaming prompt
+    has_crashed = False
     try:
         print(f"\033[1;32m[Agent Started Task]\033[0m")
         is_thinking = False
@@ -663,6 +676,7 @@ async def main_async():
     except KeyboardInterrupt:
         print("\n\033[1;31m[Agent Interrupted]\033[0m")
     except Exception as e:
+        has_crashed = True
         print(f"\n\033[1;31m[Agent Crash]:\033[0m {e}")
     finally:
         # Write state sync commands back to the parent shell
@@ -687,6 +701,18 @@ async def main_async():
             except Exception as e:
                 # Silently fail or warn
                 pass
+                
+        # Clean up transient log files on successful run (no crash)
+        if not has_crashed:
+            for log_path in getattr(session_state, "session_logs", []):
+                try:
+                    if os.path.exists(log_path):
+                        os.remove(log_path)
+                except Exception:
+                    pass
+                    
+        # Clean up active background tasks unconditionally
+        teardown_tasks()
 
 def main():
     asyncio.run(main_async())
