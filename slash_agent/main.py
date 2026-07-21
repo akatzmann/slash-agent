@@ -1,41 +1,49 @@
 import asyncio
 import argparse
+import getpass
 import sys
 import os
 import re
+from pathlib import Path
 
 def get_config_path() -> str:
-    """Resolve the configuration file path, respecting overrides and XDG specs."""
-    custom_path = os.environ.get("SLASH_AGENT_CONFIG_FILE")
+    """Resolve the configuration file path."""
+
+    # Explicit override always wins
+    custom_path = os.getenv("SLASH_AGENT_CONFIG_FILE")
     if custom_path:
-        return os.path.abspath(custom_path)
+        return str(Path(custom_path).expanduser().resolve())
 
-    xdg_config = os.environ.get("XDG_CONFIG_HOME")
-    if xdg_config:
-        config_dir = os.path.join(xdg_config, "slash-agent")
+    if os.name == "nt":
+        # Windows
+        config_dir = Path.home() / ".config" / "slash-agent"
+        filename = "env"
     else:
-        home = os.environ.get("HOME")
-        if home:
-            config_dir = os.path.join(home, ".config", "slash-agent")
+        # Linux/macOS
+        xdg = os.getenv("XDG_CONFIG_HOME")
+        if xdg:
+            config_dir = Path(xdg) / "slash-agent"
         else:
-            # Fallback to repo root if HOME is undefined
-            repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            return os.path.join(repo_root, ".env")
+            config_dir = Path.home() / ".config" / "slash-agent"
+        filename = ".env"
 
-    return os.path.join(config_dir, "env")
+    return str(config_dir / filename)
 
 def load_dotenv(env_path: str):
-    """Manually parse .env file to load variables into os.environ."""
+
     if os.path.exists(env_path):
-        with open(env_path, "r", errors="ignore") as f:
+        with open(env_path, "r", encoding="utf-8-sig", errors="ignore") as f:
             for line in f:
+
                 line = line.strip()
                 if not line or line.startswith("#"):
                     continue
+
                 if "=" in line:
                     k, v = line.split("=", 1)
                     k = k.strip()
                     v = v.strip().strip("'\"")
+
                     if k not in os.environ:
                         os.environ[k] = v
 
@@ -118,8 +126,8 @@ def migrate_legacy_config(repo_root: str, target_path: str):
 repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 config_path = get_config_path()
 migrate_legacy_config(repo_root, config_path)
-load_dotenv(config_path)
 
+load_dotenv(config_path)
 
 def sanitize_proxy_env():
     """Sanitize proxy environment variables for compatibility and sync casing."""
@@ -355,11 +363,14 @@ async def main_async():
         else:
             parser.print_help()
             sys.exit(0)
-            
-    # Add captured terminal history as system context if present
+
+    # Determine UID if available (UNIX-only)
+    uid_suffix = f" (UID: {os.getuid()})" if hasattr(os, "getuid") else ""
+    
+
     env_context = (
         f"# Environment Context\n"
-        f"- Active User: {os.getlogin()} (UID: {os.getuid()})\n"
+        f"- Active User: {getpass.getuser()}{uid_suffix}\n"
         f"- Current Working Directory: {os.getcwd()}\n\n"
     )
     if captured_context:
@@ -461,17 +472,32 @@ async def main_async():
     import platform
     os_name = "Windows" if sys.platform == "win32" else ("macOS" if sys.platform == "darwin" else "Linux")
     
+    if os_name == "Windows":
+        exec_shell = "PowerShell"
+        cmd_guidance = (
+            "- Windows/PowerShell: Use `\\` backslash paths, and standard PowerShell cmdlets/utilities if running commands.\n"
+            "- Commands are executed inside a PowerShell Core or Windows PowerShell subprocess.\n"
+        )
+    else:
+        exec_shell = "bash"
+        cmd_guidance = (
+            "- Unix/Bash/Zsh/Fish: Use `/` forward slash paths, and standard Unix commands (e.g., `ls`, `grep`, `hostname`).\n"
+            "- Commands are executed inside a bash PTY subprocess, even if the user's interactive shell is PowerShell/pwsh.\n"
+            "- Do NOT generate PowerShell cmdlets or PowerShell syntax (e.g. `$env:VAR = ...` or `Get-ChildItem`) "
+            "as they will fail to run inside the bash execution shell.\n"
+        )
+
     env_awareness = (
         "# Environment Awareness\n"
         f"- **Operating System**: {os_name} ({platform.system()} {platform.release()})\n"
-        f"- **Active Shell**: {args.shell}\n"
+        f"- **User's Interactive Shell**: {args.shell}\n"
+        f"- **Command Execution Shell**: {exec_shell}\n"
         f"- **Path Separator**: '{os.path.sep}'\n"
         f"- **Current Working Directory**: '{os.getcwd()}'\n"
         "\n"
         "Align all constructed file paths and shell commands with this environment:\n"
-        "- Windows/PowerShell: use `\\` for paths, and standard PowerShell cmdlets/utilities if running commands.\n"
-        "- Unix/Bash/Zsh/Fish: use `/` for paths, and standard Unix/Fish commands if running commands.\n"
-        "\n"
+        + cmd_guidance
+        + "\n"
     )
 
     system_prompt = (

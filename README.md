@@ -40,7 +40,7 @@
 Unlike web interfaces or proprietary commercial wrappers that silently pipe your telemetry to corporate servers, **slash-agent** puts you in total control of your data flow:
 
 * **🔐 Bring Your Own Keys (BYOK):** It talks directly to LLM providers via standard API endpoints (OpenAI, Azure OpenAI, etc.). No middleman server intercepts your terminal logs or source code.
-* **🏠 100% Air-Gapped / Offline Capable:** By pointing the backend API configuration to a local Ollama instance, your terminal history, source code, and error tracebacks never leave your physical machine.
+* **🏠 100% Air-Gapped / Offline Capable:** By pointing the backend API configuration to a local Ollama instance or an OpenAI-compatible local server (such as `llama.cpp`, `vLLM`, `SGLang`, or `Xinference`), your terminal history, source code, and error tracebacks never leave your physical machine. See [Configuring Local Providers](docs/documentation.md#5-local-openai-compatible-apis) for detailed instructions.
 
 ---
 
@@ -185,6 +185,9 @@ If you prefer to set up the agent manually instead of using the Quick Start scri
 * **Native Windows/PowerShell**: Install using the PowerShell one-liner. Command execution is handled via a thread-based, non-interactive shell runner. While interactive console UIs (like `vim` or `less`) are not supported natively due to Windows PTY limitations, standard development tools (such as `git`, `npm`, `python`, etc.) work natively.
 * **WSL2**: Supported natively by running the Unix Quick Start installation command inside any WSL2 Linux terminal (like Ubuntu or Debian).
 
+> [!NOTE]
+> If you are running local LLM engines (like `llama.cpp` or `Ollama`) natively on your Windows host and need to connect to them from `slash-agent` inside WSL2, see the [WSL2 Host Network Integration guide](docs/documentation.md#wsl2-host-network-integration).
+
 ---
 
 ## ⚙️ Configuration
@@ -192,16 +195,16 @@ If you prefer to set up the agent manually instead of using the Quick Start scri
 Configure the LLM backend, endpoint, model, and capture settings in your configuration file (located at `~/.config/slash-agent/env`) or shell profile. You can also override the configuration file path by exporting the `SLASH_AGENT_CONFIG_FILE` environment variable.
 
 ```bash
-# LLM Backend: ollama (default), openai, azure_openai, dummy
+# LLM Backend: ollama (default), openai (also covers local llama.cpp/vLLM/etc.), azure_openai, dummy
 export AGENT_BACKEND="ollama"
 
-# Model name (Defaults: gemma4:latest for ollama, gpt-5.4-nano for openai)
+# Model name (Defaults: gemma4:latest for ollama, gpt-5.4-nano for openai, gemma4-27b for local APIs)
 export AGENT_MODEL="gemma4:latest"
 
-# API endpoint base URL (defaults to http://127.0.0.1:11434 for ollama)
+# API endpoint base URL (defaults: http://127.0.0.1:11434 for ollama, http://127.0.0.1:8080/v1 for llama.cpp)
 export AGENT_ENDPOINT="http://127.0.0.1:11434"
 
-# OpenAI API Key (required if AGENT_BACKEND="openai")
+# OpenAI API Key (required if AGENT_BACKEND="openai". Use "local-api-key" for local APIs)
 export OPENAI_API_KEY=""
 
 # Context extraction settings

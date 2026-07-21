@@ -125,10 +125,10 @@ Before prompting the user (or deciding to auto-confirm), the system evaluates th
 
 ### Configuration Environment Variables
 Configure these variables in your configuration file (defaulting to `~/.config/slash-agent/env`), shell profile, or `~/.bashrc`. You can also override the default configuration path by setting the `SLASH_AGENT_CONFIG_FILE` environment variable.
-- `AGENT_BACKEND`: LLM backend engine. Supported options: `ollama` (default), `openai`, `azure_openai`, `dummy`.
-- `AGENT_MODEL`: Model name used by the LLM backend. Defaults to `gemma4:latest` for `ollama`, `gpt-5.4-nano` for `openai`, and `gpt-5.4-nano` for `azure_openai`.
-- `AGENT_ENDPOINT`: Host base URL endpoint. Defaults: `http://127.0.0.1:11434` for `ollama`, official OpenAI API endpoint for `openai`.
-- `OPENAI_API_KEY`: API key for the `openai` backend.
+- `AGENT_BACKEND`: LLM backend engine. Supported options: `ollama` (default), `openai` (also used for local OpenAI-compatible APIs), `azure_openai`, `dummy`.
+- `AGENT_MODEL`: Model name used by the LLM backend. Defaults to `gemma4:latest` for `ollama`, `gpt-5.4-nano` for `openai`, and `gpt-5.4-nano` for `azure_openai`. For local APIs, set to the GGUF filename (e.g. `gemma4-27b.gguf` for router mode) or alias.
+- `AGENT_ENDPOINT`: Host base URL endpoint. Defaults: `http://127.0.0.1:11434` for `ollama`, official OpenAI API endpoint for `openai`. For local APIs, set to your local address (e.g. `http://127.0.0.1:8080/v1`).
+- `OPENAI_API_KEY`: API key for the `openai` backend. (For local APIs, use a dummy placeholder string like `local-api-key`).
 - `AZURE_OPENAI_API_KEY`: API key for the `azure_openai` backend.
 - `AZURE_OPENAI_API_VERSION`: API version for the `azure_openai` backend (defaults to `2025-04-01-preview`).
 - `AGENT_TMUX_LINES`: Lines captured from tmux scrollback (defaults to `50`).
@@ -145,7 +145,53 @@ When an agent is configured with a thinking level other than `"off"`, the LLM ba
 
 ---
 
-## 5. Installation Options
+## 5. Local OpenAI-Compatible APIs (llama.cpp, vLLM, SGLang, Xinference)
+
+Many modern local LLM runners expose an OpenAI-compatible `/v1/chat/completions` API. You can connect `slash-agent` to any of these engines by choosing the `OpenAI` backend and setting:
+* `AGENT_ENDPOINT`: Pointing to your local server URL (must include the `/v1` suffix).
+* `OPENAI_API_KEY`: Set to any non-empty dummy string (e.g., `local-api-key`) to satisfy SDK verification.
+* `AGENT_MODEL`: Set to the specific model identifier or GGUF filename configured on your server.
+
+### Provider Comparison Matrix
+The table below lists the standard configuration parameters for popular local runners:
+
+| Runner / Engine | Default API Port | Configuration Example (`AGENT_MODEL` / `model` param) | Special Notes |
+| :--- | :--- | :--- | :--- |
+| **llama.cpp** | `8080` | `gemma4-27b` (Single model mode)<br>`gemma4-27b.gguf` (Router mode) | If using Router mode (`--models-dir`), the parameter specifies the GGUF file to load. |
+| **vLLM** | `8000` | `Qwen/Qwen2.5-Coder-7B-Instruct` | Must match the Hugging Face repo name passed to vLLM on startup. |
+| **SGLang** | `30000` | `meta-llama/Llama-3-8B-Instruct` | Must match the model path configured on startup. |
+| **Xinference** | `9997` | `gemma4-27b` | Must match the model registration UID on the Xinference server. |
+
+### 🧠 Using Local Reasoning Models (e.g., DeepSeek-R1)
+If you are running DeepSeek-R1 locally and notice raw `<think>...</think>` tags polluting the agent output or tools failing to parse because of thinking formatting, configure your server to disable or suppress reasoning tokens during standard completion calls (e.g., by launching your `llama-server` with the `--reasoning-budget 0` argument).
+
+### WSL2 Host Network Integration
+
+When running local LLM servers (like `llama.cpp` or `Ollama`) natively on your Windows host while executing `slash-agent` inside WSL2, network isolation prevents connection to `localhost`. You can bridge this boundary using one of two methods:
+
+#### Method 1: Mirrored Networking
+Shares the Windows host network stack directly with the WSL VM, enabling loopback communication.
+1. Create or edit `%USERPROFILE%\.wslconfig` on your Windows host and add:
+   ```ini
+   [wsl2]
+   networkingMode=mirrored
+   ```
+2. Restart WSL by running `wsl --shutdown` in Windows Command Prompt or PowerShell.
+3. Configure `slash-agent` to connect to loopback (e.g., `http://localhost:8080/v1` for `llama.cpp` or `http://localhost:11434` for Ollama).
+*Note: Requires Windows 11 (22H2+) and WSL 2.0.0+. Can conflict with corporate VPNs or local Kubernetes VM setups.*
+
+#### Method 2: NAT Mode Routing (Fallback)
+Allows communication through the virtual NAT switch interface.
+1. Configure your Windows LLM server to listen on all interfaces (`0.0.0.0`) and ensure Windows Defender Firewall allows inbound traffic on its port (e.g., `8080` or `11434`).
+2. Resolve the Windows host address dynamically inside your agent environment configuration (`~/.config/slash-agent/env`):
+   ```bash
+   export AGENT_ENDPOINT="http://$(ip route show | grep default | awk '{print $3}'):8080/v1"
+   ```
+*Note: Works universally on all Windows and WSL setups, but exposes the LLM server to your local network.*
+
+---
+
+## 6. Installation Options
 
 ### Method 1: Single-Command Quick Installer
 The quickest way to get started is by streaming the installer script from GitHub directly into bash:

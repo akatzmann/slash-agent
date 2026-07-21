@@ -27,10 +27,23 @@ The slash-agent is currently designed for POSIX-compliant environments, using ps
   - Running WSL2 only. Rejected since native execution is the primary request.
 
 ### 3. Model Environment Awareness (Prompt Formatting)
-- **Decision**: Dynamically prepend host metadata (Operating System, Active Shell, Path Separator, CWD) to the system prompt in `main.py` using a tight, constraint-based template to prevent command-generation and path-formatting failures on Windows.
+- **Decision**: Dynamically prepend host metadata (Operating System, User's Interactive Shell, Command Execution Shell, Path Separator, CWD) to the system prompt in `main.py` using a tight, constraint-based template.
+  - On Windows, the *Command Execution Shell* is PowerShell/pwsh.
+  - On Linux/macOS, the *Command Execution Shell* is always `bash` (to retain PTY functionality, raw stdin, and compatibility with standard Unix utilities), even if the *User's Interactive Shell* is PowerShell (which controls only the sync script syntax).
+  - Explicitly prompt the LLM to write native Linux/Bash commands when on Linux/macOS.
+
 
 ### 4. PowerShell Environment Sync Syntax
 - **Decision**: Write `$env:KEY = 'value'` and `Remove-Item Env:\KEY` to the sync file, utilizing a single-quote escaping function `pwsh_quote(val)`.
+
+### 5. PowerShell Sync File Extension
+- **Decision**: The temporary environment synchronization file created in `bin/slash-agent.ps1` MUST use a `.ps1` file extension (via `[System.IO.Path]::GetRandomFileName() + ".ps1"`) rather than the default `.tmp` extension.
+- **Rationale**: On Windows, PowerShell delegates execution of non-PowerShell extensions to the operating system's `ShellExecute` file association handler. Dot-sourcing a `.tmp` file would cause Windows to pop up a 'How do you want to open this file?' dialog. Using a `.ps1` extension forces PowerShell to execute the script in-process.
+
+### 6. Cross-Platform Raw Character Read
+- **Decision**: In `slash_agent/tools.py`, `read_char_raw()` must detect if `sys.platform == 'win32'` and fallback to using Python's standard `msvcrt` library (`msvcrt.getwch()`) rather than calling POSIX `termios` functions.
+- **Rationale**: Avoids `NameError: name 'termios' is not defined` on Windows, which breaks the user confirmation prompt.
+
 
 ## Risks / Trade-offs
 

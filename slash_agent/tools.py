@@ -197,6 +197,16 @@ def strip_ansi(text: str) -> str:
 
 def read_char_raw() -> str:
     """Read a single character from stdin under raw terminal settings."""
+    if sys.platform == 'win32':
+        import msvcrt
+        try:
+            ch = msvcrt.getwch()
+            if ch in ('\r', '\n'):
+                return '\n'
+            return ch
+        except Exception:
+            return sys.stdin.read(1)
+
     fd = sys.stdin.fileno()
     if not os.isatty(fd):
         # Fallback if stdin is not a TTY

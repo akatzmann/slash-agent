@@ -15,3 +15,7 @@
 
 - [x] 3.1 Update README.md to describe Windows installation via PowerShell one-liner and documentation
 - [x] 3.2 Verify installation, configuration, and execution flows in a simulated environment
+- [x] 3.3 Fix cross-platform config path handling in bin/installer.ps1 ($HOME fallback and .env filename on Linux/macOS)
+- [x] 3.4 Refine main.py system prompt environment awareness variables to distinguish between user interactive shell and subprocess execution shell on non-Windows environments
+- [x] 3.5 Fix temp sync file naming in bin/slash-agent.ps1 to use .ps1 extension instead of .tmp
+- [x] 3.6 Implement Windows raw character read fallback using msvcrt in slash_agent/tools.py
