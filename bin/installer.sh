@@ -280,11 +280,11 @@ except Exception:
 
     echo ""
     echo "Select LLM backend:"
-    echo "  [1] OpenAI            — gpt-5.4-nano or any OpenAI-compatible endpoint"
-    echo "  [2] Ollama (default)  — local or remote Ollama instance"
-    echo "  [3] Local OpenAI API  — llama.cpp, vLLM, SGLang, Xinference, etc."
-    echo "  [4] Azure OpenAI      — Microsoft Azure OpenAI Service"
-    echo "  [5] Dummy             — offline mock (for testing)"
+    echo "  [1] OpenAI            - gpt-5.4-nano or any OpenAI-compatible endpoint"
+    echo "  [2] Ollama (default)  - local or remote Ollama instance"
+    echo "  [3] Local OpenAI API  - llama.cpp, vLLM, SGLang, Xinference, etc."
+    echo "  [4] Azure OpenAI      - Microsoft Azure OpenAI Service"
+    echo "  [5] Dummy             - offline mock (for testing)"
     
     BACKEND_DEFAULT="2"
     if [ "$AGENT_BACKEND" = "openai" ]; then
@@ -532,10 +532,10 @@ except Exception:
 
     echo ""
     echo "Select Agent thinking / reasoning level:"
-    echo "  [1] Off (default) — recommended for standard models"
-    echo "  [2] Low           — for GPT-5/o1/o3 reasoning models (reasoning_effort=low)"
-    echo "  [3] Medium        — for GPT-5/o1/o3 reasoning models (reasoning_effort=medium)"
-    echo "  [4] High          — for GPT-5/o1/o3 reasoning models (reasoning_effort=high)"
+    echo "  [1] Off (default) - recommended for standard models"
+    echo "  [2] Low           - for GPT-5/o1/o3 reasoning models (reasoning_effort=low)"
+    echo "  [3] Medium        - for GPT-5/o1/o3 reasoning models (reasoning_effort=medium)"
+    echo "  [4] High          - for GPT-5/o1/o3 reasoning models (reasoning_effort=high)"
     
     THINKING_DEFAULT="1"
     if [ "$AGENT_THINKING_LEVEL" = "low" ]; then THINKING_DEFAULT="2"; fi

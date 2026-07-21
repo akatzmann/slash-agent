@@ -172,17 +172,19 @@ if ((Test-Path $ConfigPath) -and !$Configure) {
 } else {
     Write-Host ""
     Write-Host "Select LLM backend:"
-    Write-Host "  [1] OpenAI            — gpt-5.4-nano or any OpenAI-compatible endpoint"
-    Write-Host "  [2] Ollama (default)  — local or remote Ollama instance"
-    Write-Host "  [3] Azure OpenAI      — Microsoft Azure OpenAI Service"
-    Write-Host "  [4] Dummy             — offline mock (for testing)"
+    Write-Host "  [1] OpenAI            - gpt-5.4-nano or any OpenAI-compatible endpoint"
+    Write-Host "  [2] Ollama (default)  - local or remote Ollama instance"
+    Write-Host "  [3] Local OpenAI API  - llama.cpp, vLLM, SGLang, Xinference, etc."
+    Write-Host "  [4] Azure OpenAI      - Microsoft Azure OpenAI Service"
+    Write-Host "  [5] Dummy             - offline mock (for testing)"
     
     $BackendDefault = "2"
     if ($AgentBackend -eq "openai") { $BackendDefault = "1" }
-    elseif ($AgentBackend -eq "azure_openai") { $BackendDefault = "3" }
-    elseif ($AgentBackend -eq "dummy") { $BackendDefault = "4" }
+    elseif ($AgentBackend -eq "local_openai") { $BackendDefault = "3" }
+    elseif ($AgentBackend -eq "azure_openai") { $BackendDefault = "4" }
+    elseif ($AgentBackend -eq "dummy") { $BackendDefault = "5" }
     
-    $BackendChoice = Read-Host "Backend [1-4, default: $BackendDefault]"
+    $BackendChoice = Read-Host "Backend [1-5, default: $BackendDefault]"
     if ($BackendChoice -eq "") { $BackendChoice = $BackendDefault }
     
     if ($BackendChoice -eq "1") {
@@ -227,6 +229,18 @@ if ((Test-Path $ConfigPath) -and !$Configure) {
         if ($AgentModel -eq "") { $AgentModel = "gemma4:latest" }
         
     } elseif ($BackendChoice -eq "3") {
+        $AgentBackend = "local_openai"
+        $LocalDefault = if ($AgentEndpoint) { $AgentEndpoint } else { "http://127.0.0.1:8080/v1" }
+        $AgentEndpoint = Read-Host "API endpoint base URL [default: $LocalDefault]"
+        if ($AgentEndpoint -eq "") { $AgentEndpoint = $LocalDefault }
+        
+        $LocalModelDefault = if ($AgentModel) { $AgentModel } else { "local-model" }
+        $AgentModel = Read-Host "Enter model name [default: $LocalModelDefault]"
+        if ($AgentModel -eq "") { $AgentModel = $LocalModelDefault }
+        
+        $OpenaiApiKey = Read-Host "API key (optional, leave blank if not required)"
+        
+    } elseif ($BackendChoice -eq "4") {
         $AgentBackend = "azure_openai"
         $AgentEndpoint = Read-Host "Azure OpenAI endpoint URL"
         $AgentModel = Read-Host "Deployment/model name [default: gpt-5.4-nano]"
@@ -235,7 +249,7 @@ if ((Test-Path $ConfigPath) -and !$Configure) {
         $AzureOpenaiApiVersion = Read-Host "API version [default: 2025-04-01-preview]"
         if ($AzureOpenaiApiVersion -eq "") { $AzureOpenaiApiVersion = "2025-04-01-preview" }
         
-    } elseif ($BackendChoice -eq "4") {
+    } elseif ($BackendChoice -eq "5") {
         $AgentBackend = "dummy"
     }
     
