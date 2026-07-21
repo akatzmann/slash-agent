@@ -513,9 +513,10 @@ def parse_pty_result(command_output: bytes, state_buffer: bytes = b"") -> Tuple[
         for item in env_part.split(b"\x00"):
             if b"=" in item:
                 k, v = item.split(b"=", 1)
-                k_str = k.decode("utf-8", errors="ignore")
+                k_str = k.decode("utf-8", errors="ignore").strip()
                 v_str = v.decode("utf-8", errors="ignore")
-                env_updates[k_str] = v_str
+                if k_str and not k_str.startswith("="):
+                    env_updates[k_str] = v_str
                 
     # Update global session state
     if os.path.isdir(pwd):

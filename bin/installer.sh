@@ -8,6 +8,7 @@ set -e
 # Default settings (can be overridden by environment variables)
 REPO_URL="${REPO_URL:-https://github.com/akatzmann/slash-agent.git}"
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.slash-agent}"
+BRANCH="${BRANCH:-}"
 
 # Parse options
 FORCE_CONFIGURE=false
@@ -69,6 +70,10 @@ else
         if [ -d "$INSTALL_DIR/.git" ]; then
             echo "Updating existing repository..."
             cd "$INSTALL_DIR"
+            if [ -n "$BRANCH" ]; then
+                echo "Switching to branch $BRANCH..."
+                git checkout "$BRANCH" || { echo "Warning: Failed to checkout branch $BRANCH."; }
+            fi
             git pull || {
                 echo "Warning: git pull failed. If you have local modifications, please commit or stash them."
                 echo "Continuing setup with existing files..."
@@ -79,7 +84,12 @@ else
         fi
     else
         echo "Cloning repository to $INSTALL_DIR..."
-        git clone "$REPO_URL" "$INSTALL_DIR" || { echo "Error: Failed to clone repository."; exit 1; }
+        if [ -n "$BRANCH" ]; then
+            echo "Cloning branch $BRANCH..."
+            git clone -b "$BRANCH" "$REPO_URL" "$INSTALL_DIR" || { echo "Error: Failed to clone repository branch $BRANCH."; exit 1; }
+        else
+            git clone "$REPO_URL" "$INSTALL_DIR" || { echo "Error: Failed to clone repository."; exit 1; }
+        fi
         cd "$INSTALL_DIR"
     fi
 fi

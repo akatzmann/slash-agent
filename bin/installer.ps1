@@ -8,6 +8,7 @@ param(
 # Default settings (can be overridden by environment variables)
 $RepoUrl = if ($env:REPO_URL) { $env:REPO_URL } else { "https://github.com/akatzmann/slash-agent.git" }
 $InstallDir = if ($env:INSTALL_DIR) { $env:INSTALL_DIR } else { Join-Path $env:USERPROFILE ".slash-agent" }
+$Branch = if ($env:BRANCH) { $env:BRANCH } else { $null }
 
 $UpdateMode = Test-Path $InstallDir
 
@@ -59,6 +60,10 @@ if ($Configure) {
         if (Test-Path (Join-Path $InstallDir ".git")) {
             Write-Host "Updating existing repository..."
             Set-Location -LiteralPath $InstallDir
+            if ($Branch) {
+                Write-Host "Switching to branch $Branch..."
+                git checkout $Branch
+            }
             git pull
         } else {
             Write-Host "Warning: Target directory exists but is not a git repository. Skipping repository update."
@@ -66,7 +71,12 @@ if ($Configure) {
         }
     } else {
         Write-Host "Cloning repository to $InstallDir..."
-        git clone $RepoUrl $InstallDir
+        if ($Branch) {
+            Write-Host "Cloning branch $Branch..."
+            git clone -b $Branch $RepoUrl $InstallDir
+        } else {
+            git clone $RepoUrl $InstallDir
+        }
         if ($LASTEXITCODE -ne 0) {
             Write-Error "Error: Failed to clone repository."
             exit 1

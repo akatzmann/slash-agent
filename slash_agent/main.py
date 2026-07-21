@@ -305,8 +305,8 @@ def get_env_diff(shell: str = "bash") -> str:
     
     # Check for changes or additions
     for k, v in session_state.env_vars.items():
-        # Skip standard read-only or session-specific terminal vars
-        if k in ('_', 'SHLVL', 'PWD', 'OLDPWD', 'HISTSIZE', 'HISTFILE'):
+        # Skip empty, internal, or read-only session-specific terminal vars
+        if not k or not k.strip() or k.startswith('=') or k in ('_', 'SHLVL', 'PWD', 'OLDPWD', 'HISTSIZE', 'HISTFILE'):
             continue
         if k not in STARTING_ENV or STARTING_ENV[k] != v:
             import shlex
@@ -319,6 +319,8 @@ def get_env_diff(shell: str = "bash") -> str:
             
     # Check for removals
     for k in STARTING_ENV:
+        if not k or not k.strip() or k.startswith('='):
+            continue
         if k not in session_state.env_vars:
             if shell == "fish":
                 diff_cmds.append(f'set -e {k}')
