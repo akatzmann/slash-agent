@@ -44,12 +44,14 @@ if [ "$FORCE_CONFIGURE" = false ]; then
     echo "Verifying prerequisites..."
     
     if ! command -v git >/dev/null 2>&1; then
-        echo "Error: git is not installed. Please install git and try again."
+        echo "Error: git is not installed."
+        echo "Please install git using your package manager (e.g. 'sudo apt install git', 'brew install git', or 'sudo dnf install git') and try again."
         exit 1
     fi
     
     if ! command -v python3 >/dev/null 2>&1; then
-        echo "Error: python3 is not installed. Please install python3 and try again."
+        echo "Error: python3 is not installed."
+        echo "Please install python3 using your package manager (e.g. 'sudo apt install python3 python3-venv', 'brew install python', or 'sudo dnf install python3') and try again."
         exit 1
     fi
     

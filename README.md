@@ -52,12 +52,16 @@ Get up and running instantly. Run the quick installer script in your shell:
 
 **For Unix (Bash, Zsh, Ksh, Fish):**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/akatzmann/slash-agent/master/bin/installer.sh | bash
+curl -fsSL https://raw.githubusercontent.com/akatzmann/slash-agent/main/bin/installer.sh | bash
 ```
 
 **For Windows (PowerShell 5.1 & PowerShell Core 7+):**
 ```powershell
-powershell -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/akatzmann/slash-agent/master/bin/installer.ps1 | iex"
+powershell -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/akatzmann/slash-agent/main/bin/installer.ps1 -OutFile $env:TEMP\installer.ps1; & $env:TEMP\installer.ps1; Remove-Item $env:TEMP\installer.ps1"
+```
+*Or via Git directly:*
+```powershell
+git clone https://github.com/akatzmann/slash-agent.git $env:USERPROFILE\.slash-agent; & "$env:USERPROFILE\.slash-agent\bin\installer.ps1"
 ```
 
 *(This automatically clones the repo to `~/.slash-agent`, configures a Python virtual environment, installs requirements, and registers the shell integration in your appropriate shell profile file, e.g. `~/.zshrc`, `~/.bashrc`, `config.fish`, or `$PROFILE`.)*

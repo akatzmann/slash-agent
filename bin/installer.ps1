@@ -22,28 +22,82 @@ if ($Configure) {
 }
 Write-Host "==============================================" -ForegroundColor Cyan
 
+# Non-interactive / CI detection
+$IsInteractive = [Environment]::UserInteractive -and !$env:NONINTERACTIVE -and !$env:CI
+
+function Test-PythonCmd($cmd) {
+    if (!(Get-Command $cmd -ErrorAction SilentlyContinue)) { return $false }
+    $val = & $cmd -c "import sys; print(sys.version_info[0])" 2>$null
+    return ($LASTEXITCODE -eq 0 -and $val -and $val.Trim() -eq "3")
+}
+
+function Refresh-ProcessPath {
+    $machinePath = [System.Environment]::GetEnvironmentVariable("Path", "Machine")
+    $userPath = [System.Environment]::GetEnvironmentVariable("Path", "User")
+    $env:Path = "$machinePath;$userPath"
+}
+
 # 1. Prerequisite Verification
 if (!$Configure) {
     Write-Host "Verifying prerequisites..."
     
+    # Check Git
     if (!(Get-Command git -ErrorAction SilentlyContinue)) {
-        Write-Error "Error: git is not installed. Please install git (winget install Git.Git) and try again."
-        exit 1
+        if (Get-Command winget -ErrorAction SilentlyContinue) {
+            $DoInstallGit = $true
+            if ($IsInteractive) {
+                $choice = Read-Host "Git is required but not installed. Install Git via winget now? [Y/n]"
+                if ($choice -eq "n") { $DoInstallGit = $false }
+            }
+            if ($DoInstallGit) {
+                Write-Host "Installing Git via winget..."
+                winget install --id Git.Git -e --source winget --accept-source-agreements --accept-package-agreements
+                Refresh-ProcessPath
+            }
+        }
+        
+        if (!(Get-Command git -ErrorAction SilentlyContinue)) {
+            Write-Error "Error: git is not installed. Please install Git manually from https://git-scm.com/download/win and try again."
+            exit 1
+        }
     }
     
+    # Check Python 3 (functional execution test to bypass MS Store app execution alias)
     $PythonCmd = $null
-    if (Get-Command python -ErrorAction SilentlyContinue) {
-        $PythonCmd = "python"
-    } elseif (Get-Command python3 -ErrorAction SilentlyContinue) {
-        $PythonCmd = "python3"
+    foreach ($candidate in @("python", "python3", "py")) {
+        if (Test-PythonCmd $candidate) {
+            $PythonCmd = $candidate
+            break
+        }
     }
     
     if (!$PythonCmd) {
-        Write-Error "Error: python is not installed. Please install Python 3 (winget install Python.Python.3) and try again."
-        exit 1
+        if (Get-Command winget -ErrorAction SilentlyContinue) {
+            $DoInstallPy = $true
+            if ($IsInteractive) {
+                $choice = Read-Host "Python 3 is required but not installed (or points to MS Store alias). Install Python 3.12 via winget now? [Y/n]"
+                if ($choice -eq "n") { $DoInstallPy = $false }
+            }
+            if ($DoInstallPy) {
+                Write-Host "Installing Python 3.12 via winget..."
+                winget install --id Python.Python.3.12 -e --source winget --accept-source-agreements --accept-package-agreements
+                Refresh-ProcessPath
+                foreach ($candidate in @("python", "python3", "py")) {
+                    if (Test-PythonCmd $candidate) {
+                        $PythonCmd = $candidate
+                        break
+                    }
+                }
+            }
+        }
+        
+        if (!$PythonCmd) {
+            Write-Error "Error: Python 3 is not installed (or points to Microsoft Store alias). Please install Python 3.10+ from https://www.python.org/downloads/windows/ and try again."
+            exit 1
+        }
     }
     
-    Write-Host "Prerequisites verified successfully."
+    Write-Host "Prerequisites verified successfully (Git & $PythonCmd)."
 }
 
 # 2. Repository Cloning and Setup
@@ -295,9 +349,35 @@ if ((Test-Path $ConfigPath) -and !$Configure) {
     Write-Host "Configuration saved successfully to $ConfigPath"
 }
 
-# 5. Shell Profile Registration
+# 5. Shell Profile & Execution Policy Configuration
 if (!$Configure) {
     Write-Host "Configuring shell integration..."
+    
+    # Unblock the sourced script to remove NTFS Zone.Identifier stream ("Downloaded from Internet")
+    $AgentScriptPath = Join-Path $InstallDir "bin\slash-agent.ps1"
+    if (Test-Path $AgentScriptPath) {
+        Unblock-File -Path $AgentScriptPath -ErrorAction SilentlyContinue
+    }
+    
+    # Check and suggest updating ExecutionPolicy for CurrentUser if restricted
+    $CurrentEP = Get-ExecutionPolicy -Scope CurrentUser
+    if ($CurrentEP -in @("Restricted", "Undefined")) {
+        $SysEP = Get-ExecutionPolicy
+        if ($SysEP -in @("Restricted", "AllSigned")) {
+            if ($IsInteractive) {
+                Write-Host "Notice: PowerShell script execution is currently restricted on this system." -ForegroundColor Yellow
+                $epChoice = Read-Host "Set ExecutionPolicy to RemoteSigned for CurrentUser? [Y/n]"
+                if ($epChoice -ne "n") {
+                    try {
+                        Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser -Force
+                        Write-Host "ExecutionPolicy successfully updated to RemoteSigned for CurrentUser." -ForegroundColor Green
+                    } catch {
+                        Write-Host "Warning: Could not update ExecutionPolicy automatically. If sourcing fails, run: Set-ExecutionPolicy RemoteSigned -Scope CurrentUser" -ForegroundColor Yellow
+                    }
+                }
+            }
+        }
+    }
     
     $ProfileDir = Split-Path $PROFILE
     if (!(Test-Path $ProfileDir)) {
@@ -340,8 +420,10 @@ if ($Configure) {
 }
 
 if (!$Configure) {
-    Write-Host "To start using the agent in your current PowerShell session, run:" -ForegroundColor Green
+    Write-Host "To start using slash-agent in your CURRENT PowerShell session, run:" -ForegroundColor Green
     Write-Host "  . `"$InstallDir\bin\slash-agent.ps1`"" -ForegroundColor Yellow
     Write-Host "Then use /agent or 'agent' followed by your task." -ForegroundColor Green
+    Write-Host "If script execution is blocked when opening a new terminal window, run:" -ForegroundColor Yellow
+    Write-Host "  Set-ExecutionPolicy RemoteSigned -Scope CurrentUser" -ForegroundColor Yellow
 }
 Write-Host "==============================================" -ForegroundColor Green

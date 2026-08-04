@@ -195,15 +195,23 @@ Allows communication through the virtual NAT switch interface.
 ## 6. Installation Options
 
 ### Method 1: Single-Command Quick Installer
-The quickest way to get started is by streaming the installer script from GitHub directly into bash:
+
+**For POSIX (Bash, Zsh, Ksh, Fish):**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/akatzmann/slash-agent/master/bin/installer.sh | bash
+curl -fsSL https://raw.githubusercontent.com/akatzmann/slash-agent/main/bin/installer.sh | bash
 ```
+
+**For Windows (PowerShell 5.1 & PowerShell Core 7+):**
+```powershell
+powershell -ExecutionPolicy Bypass -Command "iwr https://raw.githubusercontent.com/akatzmann/slash-agent/main/bin/installer.ps1 -OutFile $env:TEMP\installer.ps1; & $env:TEMP\installer.ps1; Remove-Item $env:TEMP\installer.ps1"
+```
+*Note: Using a temporary file for execution avoids memory-stream piping (`irm | iex`) to prevent Windows Defender AMSI dropper false positives. If script execution is blocked when opening a new terminal, run: `Set-ExecutionPolicy RemoteSigned -Scope CurrentUser`.*
+
 **What this script does:**
-1. Verifies the presence of requirements `git`, `python3`, and virtual environment capabilities (`venv` or `virtualenv`).
-2. Clones the repository to `~/.slash-agent` (customizable via `INSTALL_DIR` environment variable).
-3. Creates a local Python virtual environment (`.venv`) and installs the dependencies from `requirements.txt`.
-4. Idempotently adds the sourcing hook statement (`source ~/.slash-agent/bin/slash-agent.sh`) to the end of `~/.bashrc`.
+1. Verifies the presence of requirements `git` and `python3` (or offers automated `winget` installation on Windows).
+2. Clones the repository to `~/.slash-agent` (or `$env:USERPROFILE\.slash-agent`).
+3. Creates a local Python virtual environment (`.venv`) and installs dependencies.
+4. Idempotently adds the sourcing hook statement to your active shell profile file (`~/.bashrc`, `~/.zshrc`, `config.fish`, or `$PROFILE`).
 
 ### Method 2: Manual Installation
 For users who want to review every step manually:
