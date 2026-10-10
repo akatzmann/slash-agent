@@ -415,7 +415,7 @@ async def main_async():
         if backend_type == "openai":
             from openai import AsyncOpenAI
             from py_agent_core.backends.openai import OpenAIBackend
-            resolved_model = model or "gpt-5.4-nano"
+            resolved_model = model or "gpt-6.1-sol"
             client_kwargs = {}
             if endpoint:
                 client_kwargs["base_url"] = endpoint
@@ -438,7 +438,7 @@ async def main_async():
             from py_agent_core.backends.azure_openai import AzureOpenAIBackend
             azure_api_key = os.environ.get("AZURE_OPENAI_API_KEY", api_key)
             azure_api_version = os.environ.get("AZURE_OPENAI_API_VERSION", "2025-04-01-preview")
-            resolved_model = model or "gpt-5.4-nano"
+            resolved_model = model or "gpt-6.1-sol"
             client = AsyncAzureOpenAI(
                 api_key=azure_api_key,
                 api_version=azure_api_version,
