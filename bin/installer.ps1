@@ -226,7 +226,7 @@ if ((Test-Path $ConfigPath) -and !$Configure) {
 } else {
     Write-Host ""
     Write-Host "Select LLM backend:"
-    Write-Host "  [1] OpenAI            - gpt-5.4-nano or any OpenAI-compatible endpoint"
+    Write-Host "  [1] OpenAI            - gpt-6.1-sol or any OpenAI-compatible endpoint"
     Write-Host "  [2] Ollama (default)  - local or remote Ollama instance"
     Write-Host "  [3] Local OpenAI API  - llama.cpp, vLLM, SGLang, Xinference, etc."
     Write-Host "  [4] Azure OpenAI      - Microsoft Azure OpenAI Service"
@@ -246,22 +246,24 @@ if ((Test-Path $ConfigPath) -and !$Configure) {
         
         Write-Host ""
         Write-Host "Select OpenAI model:"
-        Write-Host "  [1] gpt-5.5"
-        Write-Host "  [2] gpt-5.4-mini"
-        Write-Host "  [3] gpt-5.4-nano (default)"
-        Write-Host "  [4] gpt-5.3-codex"
-        Write-Host "  [5] o3"
-        Write-Host "  [6] Enter a custom model name manually"
+        Write-Host "  [1] gpt-6.1-sol (default)"
+        Write-Host "  [2] gpt-5.5"
+        Write-Host "  [3] gpt-5.4-mini"
+        Write-Host "  [4] gpt-5.4-nano"
+        Write-Host "  [5] gpt-5.3-codex"
+        Write-Host "  [6] o3"
+        Write-Host "  [7] Enter a custom model name manually"
         
-        $ModelDefault = "3"
-        $OpenaiModelChoice = Read-Host "Select a model [1-6, default: $ModelDefault]"
+        $ModelDefault = "1"
+        $OpenaiModelChoice = Read-Host "Select a model [1-7, default: $ModelDefault]"
         if ($OpenaiModelChoice -eq "") { $OpenaiModelChoice = $ModelDefault }
         
-        if ($OpenaiModelChoice -eq "1") { $AgentModel = "gpt-5.5" }
-        elseif ($OpenaiModelChoice -eq "2") { $AgentModel = "gpt-5.4-mini" }
-        elseif ($OpenaiModelChoice -eq "3") { $AgentModel = "gpt-5.4-nano" }
-        elseif ($OpenaiModelChoice -eq "4") { $AgentModel = "gpt-5.3-codex" }
-        elseif ($OpenaiModelChoice -eq "5") { $AgentModel = "o3" }
+        if ($OpenaiModelChoice -eq "1") { $AgentModel = "gpt-6.1-sol" }
+        elseif ($OpenaiModelChoice -eq "2") { $AgentModel = "gpt-5.5" }
+        elseif ($OpenaiModelChoice -eq "3") { $AgentModel = "gpt-5.4-mini" }
+        elseif ($OpenaiModelChoice -eq "4") { $AgentModel = "gpt-5.4-nano" }
+        elseif ($OpenaiModelChoice -eq "5") { $AgentModel = "gpt-5.3-codex" }
+        elseif ($OpenaiModelChoice -eq "6") { $AgentModel = "o3" }
         else {
             $AgentModel = Read-Host "Enter model name"
         }
@@ -297,8 +299,8 @@ if ((Test-Path $ConfigPath) -and !$Configure) {
     } elseif ($BackendChoice -eq "4") {
         $AgentBackend = "azure_openai"
         $AgentEndpoint = Read-Host "Azure OpenAI endpoint URL"
-        $AgentModel = Read-Host "Deployment/model name [default: gpt-5.4-nano]"
-        if ($AgentModel -eq "") { $AgentModel = "gpt-5.4-nano" }
+        $AgentModel = Read-Host "Deployment/model name [default: gpt-6.1-sol]"
+        if ($AgentModel -eq "") { $AgentModel = "gpt-6.1-sol" }
         $AzureOpenaiApiKey = Read-Host "Azure OpenAI API key"
         $AzureOpenaiApiVersion = Read-Host "API version [default: 2025-04-01-preview]"
         if ($AzureOpenaiApiVersion -eq "") { $AzureOpenaiApiVersion = "2025-04-01-preview" }

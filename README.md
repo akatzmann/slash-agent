@@ -204,7 +204,7 @@ Configure the LLM backend, endpoint, model, and capture settings in your configu
 # LLM Backend: ollama (default), openai (also covers local llama.cpp/vLLM/etc.), azure_openai, dummy
 export AGENT_BACKEND="ollama"
 
-# Model name (Defaults: gemma4:latest for ollama, gpt-5.4-nano for openai, gemma4-27b for local APIs)
+# Model name (Defaults: gemma4:latest for ollama, gpt-6.1-sol for openai, gemma4-27b for local APIs)
 export AGENT_MODEL="gemma4:latest"
 
 # API endpoint base URL (defaults: http://127.0.0.1:11434 for ollama, http://127.0.0.1:8080/v1 for llama.cpp)

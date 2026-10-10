@@ -282,7 +282,7 @@ except Exception:
 
     echo ""
     echo "Select LLM backend:"
-    echo "  [1] OpenAI            - gpt-5.4-nano or any OpenAI-compatible endpoint"
+    echo "  [1] OpenAI            - gpt-6.1-sol or any OpenAI-compatible endpoint"
     echo "  [2] Ollama (default)  - local or remote Ollama instance"
     echo "  [3] Local OpenAI API  - llama.cpp, vLLM, SGLang, Xinference, etc."
     echo "  [4] Azure OpenAI      - Microsoft Azure OpenAI Service"
@@ -332,46 +332,52 @@ except Exception:
         
         echo ""
         echo "Select OpenAI model:"
-        echo "  [1] gpt-5.5"
-        echo "  [2] gpt-5.4-mini"
-        echo "  [3] gpt-5.4-nano (default)"
-        echo "  [4] gpt-5.3-codex"
-        echo "  [5] o3"
-        echo "  [6] Enter a custom model name manually"
+        echo "  [1] gpt-6.1-sol (default)"
+        echo "  [2] gpt-5.5"
+        echo "  [3] gpt-5.4-mini"
+        echo "  [4] gpt-5.4-nano"
+        echo "  [5] gpt-5.3-codex"
+        echo "  [6] o3"
+        echo "  [7] Enter a custom model name manually"
         
-        OPENAI_MODEL_DEFAULT="3"
-        if [ "$AGENT_MODEL" = "gpt-5.5" ]; then
+        OPENAI_MODEL_DEFAULT="1"
+        if [ "$AGENT_MODEL" = "gpt-6.1-sol" ]; then
             OPENAI_MODEL_DEFAULT="1"
-        elif [ "$AGENT_MODEL" = "gpt-5.4-mini" ]; then
+        elif [ "$AGENT_MODEL" = "gpt-5.5" ]; then
             OPENAI_MODEL_DEFAULT="2"
-        elif [ "$AGENT_MODEL" = "gpt-5.4-nano" ]; then
+        elif [ "$AGENT_MODEL" = "gpt-5.4-mini" ]; then
             OPENAI_MODEL_DEFAULT="3"
-        elif [ "$AGENT_MODEL" = "gpt-5.3-codex" ]; then
+        elif [ "$AGENT_MODEL" = "gpt-5.4-nano" ]; then
             OPENAI_MODEL_DEFAULT="4"
-        elif [ "$AGENT_MODEL" = "o3" ]; then
+        elif [ "$AGENT_MODEL" = "gpt-5.3-codex" ]; then
             OPENAI_MODEL_DEFAULT="5"
-        elif [ -n "$AGENT_MODEL" ]; then
+        elif [ "$AGENT_MODEL" = "o3" ]; then
             OPENAI_MODEL_DEFAULT="6"
+        elif [ -n "$AGENT_MODEL" ]; then
+            OPENAI_MODEL_DEFAULT="7"
         fi
         
         while true; do
-            OPENAI_MODEL_CHOICE=$(prompt_user "Select a model [1-6, default: $OPENAI_MODEL_DEFAULT]: " "$OPENAI_MODEL_DEFAULT")
+            OPENAI_MODEL_CHOICE=$(prompt_user "Select a model [1-7, default: $OPENAI_MODEL_DEFAULT]: " "$OPENAI_MODEL_DEFAULT")
             if [ "$OPENAI_MODEL_CHOICE" = "1" ]; then
-                AGENT_MODEL="gpt-5.5"
+                AGENT_MODEL="gpt-6.1-sol"
                 break
             elif [ "$OPENAI_MODEL_CHOICE" = "2" ]; then
-                AGENT_MODEL="gpt-5.4-mini"
+                AGENT_MODEL="gpt-5.5"
                 break
             elif [ "$OPENAI_MODEL_CHOICE" = "3" ]; then
-                AGENT_MODEL="gpt-5.4-nano"
+                AGENT_MODEL="gpt-5.4-mini"
                 break
             elif [ "$OPENAI_MODEL_CHOICE" = "4" ]; then
-                AGENT_MODEL="gpt-5.3-codex"
+                AGENT_MODEL="gpt-5.4-nano"
                 break
             elif [ "$OPENAI_MODEL_CHOICE" = "5" ]; then
-                AGENT_MODEL="o3"
+                AGENT_MODEL="gpt-5.3-codex"
                 break
             elif [ "$OPENAI_MODEL_CHOICE" = "6" ]; then
+                AGENT_MODEL="o3"
+                break
+            elif [ "$OPENAI_MODEL_CHOICE" = "7" ]; then
                 AGENT_MODEL=$(prompt_user "Enter model name [default: $AGENT_MODEL]: " "$AGENT_MODEL")
                 if [ -n "$AGENT_MODEL" ]; then
                     break
@@ -518,7 +524,7 @@ except Exception:
     elif [ "$BACKEND_CHOICE" = "4" ]; then
         AGENT_BACKEND="azure_openai"
         AGENT_ENDPOINT=$(prompt_user "Azure OpenAI endpoint URL [default: $AGENT_ENDPOINT]: " "$AGENT_ENDPOINT")
-        AGENT_MODEL=$(prompt_user "Deployment/model name [default: ${AGENT_MODEL:-gpt-5.4-nano}]: " "${AGENT_MODEL:-gpt-5.4-nano}")
+        AGENT_MODEL=$(prompt_user "Deployment/model name [default: ${AGENT_MODEL:-gpt-6.1-sol}]: " "${AGENT_MODEL:-gpt-6.1-sol}")
         AZURE_OPENAI_API_KEY_VAL=$(prompt_user "Azure OpenAI API key [default: $AZURE_OPENAI_API_KEY]: " "$AZURE_OPENAI_API_KEY")
         AZURE_OPENAI_API_VERSION_VAL=$(prompt_user "API version [default: ${AZURE_OPENAI_API_VERSION:-2025-04-01-preview}]: " "${AZURE_OPENAI_API_VERSION:-2025-04-01-preview}")
 
@@ -529,7 +535,7 @@ except Exception:
     else
         echo "Invalid choice. Defaulting to OpenAI backend."
         AGENT_BACKEND="openai"
-        AGENT_MODEL="gpt-5.4-nano"
+        AGENT_MODEL="gpt-6.1-sol"
     fi
 
     echo ""

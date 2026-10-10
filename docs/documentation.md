@@ -126,7 +126,7 @@ Before prompting the user (or deciding to auto-confirm), the system evaluates th
 ### Configuration Environment Variables
 Configure these variables in your configuration file (defaulting to `~/.config/slash-agent/env`), shell profile, or `~/.bashrc`. You can also override the default configuration path by setting the `SLASH_AGENT_CONFIG_FILE` environment variable.
 - `AGENT_BACKEND`: LLM backend engine. Supported options: `ollama` (default), `openai` (also used for local OpenAI-compatible APIs), `azure_openai`, `dummy`.
-- `AGENT_MODEL`: Model name used by the LLM backend. Defaults to `gemma4:latest` for `ollama`, `gpt-5.4-nano` for `openai`, and `gpt-5.4-nano` for `azure_openai`. For local APIs, set to the GGUF filename (e.g. `gemma4-27b.gguf` for router mode) or alias.
+- `AGENT_MODEL`: Model name used by the LLM backend. Defaults to `gemma4:latest` for `ollama`, `gpt-6.1-sol` for `openai`, and `gpt-6.1-sol` for `azure_openai`. For local APIs, set to the GGUF filename (e.g. `gemma4-27b.gguf` for router mode) or alias.
 - `AGENT_ENDPOINT`: Host base URL endpoint. Defaults: `http://127.0.0.1:11434` for `ollama`, official OpenAI API endpoint for `openai`. For local APIs, set to your local address (e.g. `http://127.0.0.1:8080/v1`).
 - `OPENAI_API_KEY`: API key for the `openai` backend. (For local APIs, use a dummy placeholder string like `local-api-key`).
 - `AZURE_OPENAI_API_KEY`: API key for the `azure_openai` backend.
