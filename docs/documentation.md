@@ -243,3 +243,43 @@ To ensure that background tasks do not become orphaned daemons when the agent se
 3. **Linux/WSL2 `prctl` Binding:** On Linux hosts (and WSL2), the runner sets `prctl(PR_SET_PDEATHSIG, SIGTERM)` on the child process. The OS kernel reaps the process group automatically if the parent Python orchestrator dies abruptly (e.g., via `SIGKILL`).
 4. **Windows Job Objects:** On Windows hosts, the runner uses `win32job` to assign child processes to a parent-bound Job Object configured with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`. The OS propagates termination immediately when the parent process handle is closed.
 
+---
+
+## 8. Shell Initialization & Upgrades
+
+### Shell Integration Hook (`init`)
+`slash-agent` provides dynamic integration generation for all supported shells:
+```bash
+# Output initialization hook to stdout
+slash-agent init [bash|zsh|fish|ksh]
+
+# Optional: customize the alias/function name (default: agent)
+slash-agent init zsh --cmd myagent
+
+# Automatically append to the active shell's profile configuration file (~/.zshrc, ~/.bashrc, config.fish, etc.)
+slash-agent init --install
+```
+
+### In-Place Upgrades
+To update `slash-agent` to the latest release at any time:
+```bash
+# Via active shell function:
+/agent --update
+# or
+/agent --upgrade
+# or
+agent -u
+
+# Or directly via CLI:
+slash-agent --update
+```
+In git clone installations, this automatically fetches updates and refreshes dependencies. In package installations (`pipx`), it triggers the corresponding package manager upgrade.
+
+---
+
+## 9. Responsible Usage & Cost Management
+
+- **API Costs & Budget Quotas:** When using commercial LLM providers (e.g. OpenAI or Azure OpenAI), API usage is billed directly to your account. Monitor your provider consoles and establish spending quotas. For zero token expense and complete privacy, use local models via [Ollama](https://ollama.com).
+- **Interactive Review:** Keep interactive confirmation enabled (`[y]es / [n]o / [e]dit / [c]omment`) when evaluating unfamiliar repositories or executing destructive tasks.
+- **Unattended Execution Precautions:** Flags like `-y` / `--yes` bypass manual confirmation. Only deploy unattended flags in isolated containers, disposable VMs, or CI pipelines with strict blast-radius controls.
+

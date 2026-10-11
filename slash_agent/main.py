@@ -319,6 +319,102 @@ def get_env_diff(shell: str = "bash") -> str:
     return "\n".join(diff_cmds)
 
 async def main_async():
+    # 0. Intercept CLI subcommands and special flags before session initialization
+    if len(sys.argv) > 1:
+        first_arg = sys.argv[1]
+        if first_arg == "init":
+            from slash_agent.shell_init import (
+                generate_init_script,
+                detect_shell,
+                install_init_hook,
+                SUPPORTED_SHELLS,
+            )
+            init_parser = argparse.ArgumentParser(
+                prog="slash-agent init",
+                description="Generate shell initialization script or install into shell RC.",
+            )
+            init_parser.add_argument(
+                "shell",
+                nargs="?",
+                choices=list(SUPPORTED_SHELLS),
+                help="Target shell (auto-detected if omitted)",
+            )
+            init_parser.add_argument(
+                "--cmd",
+                type=str,
+                default="agent",
+                help="Command alias name (default: agent)",
+            )
+            init_parser.add_argument(
+                "-i",
+                "--install",
+                action="store_true",
+                help="Install into shell profile configuration file",
+            )
+            init_args = init_parser.parse_args(sys.argv[2:])
+
+            target_shell = init_args.shell or detect_shell()
+            if init_args.install:
+                installed, rc_path = install_init_hook(
+                    target_shell, cmd_name=init_args.cmd
+                )
+                if installed:
+                    print(
+                        f"\033[1;32m[slash-agent] Successfully installed {target_shell} integration to {rc_path}\033[0m"
+                    )
+                    print(
+                        f"\033[1;33mRestart your shell or run: source {rc_path}\033[0m"
+                    )
+                else:
+                    print(
+                        f"\033[1;34m[slash-agent] Shell integration already present in {rc_path}\033[0m"
+                    )
+                sys.exit(0)
+            else:
+                try:
+                    script = generate_init_script(
+                        target_shell, cmd_name=init_args.cmd
+                    )
+                    sys.stdout.write(script)
+                    sys.exit(0)
+                except ValueError as e:
+                    print(f"\033[1;31m[slash-agent error]\033[0m {e}", file=sys.stderr)
+                    sys.exit(1)
+
+        elif first_arg in ("--update", "--upgrade", "-u", "update", "upgrade"):
+            repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            git_dir = os.path.join(repo_root, ".git")
+            installer_path = os.path.join(repo_root, "bin", "installer.sh")
+            if os.path.exists(git_dir) and os.path.exists(installer_path):
+                print("\033[1;34m[slash-agent] Updating git-based installation...\033[0m")
+                import subprocess
+                res = subprocess.run(["bash", installer_path])
+                sys.exit(res.returncode)
+            else:
+                print("\033[1;34m[slash-agent] Upgrading package installation...\033[0m")
+                import subprocess
+                which_pipx = subprocess.run(["which", "pipx"], capture_output=True)
+                if which_pipx.returncode == 0:
+                    res = subprocess.run(["pipx", "upgrade", "slash-agent"])
+                    if res.returncode == 0:
+                        print("\033[1;32m[slash-agent] Upgrade complete!\033[0m")
+                        sys.exit(0)
+                res = subprocess.run(
+                    [sys.executable, "-m", "pip", "install", "--upgrade", "slash-agent"]
+                )
+                sys.exit(res.returncode)
+
+        elif first_arg in ("--configure", "-c"):
+            repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            installer_path = os.path.join(repo_root, "bin", "installer.sh")
+            if os.path.exists(installer_path):
+                import subprocess
+                res = subprocess.run(["bash", installer_path, "--configure"])
+                sys.exit(res.returncode)
+            else:
+                print(f"\033[1;33m[slash-agent] Config file: {get_config_path()}\033[0m")
+                sys.exit(0)
+
     parser = argparse.ArgumentParser(description="Native LLM Agent Shell Integration")
     parser.add_argument("--context-file", type=str, help="File containing captured terminal history/context")
     parser.add_argument("--sync-file", type=str, help="Temp file to write environment sync commands for parent shell")

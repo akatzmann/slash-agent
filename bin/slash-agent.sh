@@ -21,6 +21,10 @@ function _agent_run {
         bash "$_SLASH_AGENT_ROOT/bin/installer.sh" --configure
         return $?
     fi
+    if [ "$1" = "--upgrade" ] || [ "$1" = "--update" ] || [ "$1" = "-u" ]; then
+        bash "$_SLASH_AGENT_ROOT/bin/installer.sh"
+        return $?
+    fi
 
     local CONTEXT_FILE
     CONTEXT_FILE=$(mktemp "${TMPDIR:-/tmp}/agent_context.XXXXXX")

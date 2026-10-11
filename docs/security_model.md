@@ -50,3 +50,13 @@ Command execution occurs inside a pseudo-terminal (PTY) subshell:
 - Working directory (`cwd`) and environment variables are synchronized back to the main python orchestration context after each execution.
 - Command execution is bound to the parent terminal window's size (handling `SIGWINCH` dynamically).
 - Destructive commands are inspected statically by a regex scanner and elevated to critical risk if matched (e.g., `rm -rf`, `sudo`, `mkfs`, `dd`).
+
+---
+
+## 5. Token Cost & Financial Safety
+
+When using external commercial LLM APIs (such as OpenAI or Azure OpenAI):
+- **Bring Your Own Key (BYOK):** `slash-agent` never proxies requests through proprietary servers. Calls route directly to configured endpoints using the keys provided in your environment.
+- **Budget Controls:** Users are strongly advised to set monthly budget limits and hard caps within their LLM provider consoles.
+- **Large Context Truncation:** Large command history or tmux buffers are bounded to the most recent lines (default: 50 lines for tmux, 20 commands for history) to prevent runaway token costs.
+- **Offline Alternative:** To eliminate token expenses entirely and operate air-gapped, use a local Ollama model (`ollama run qwen2.5-coder`).

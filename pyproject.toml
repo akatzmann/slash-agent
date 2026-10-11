@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "slash-agent"
+version = "0.2.1"
+description = "Native LLM Agent Terminal Copilot with Shell State Sync"
+readme = "README.md"
+authors = [{ name = "akatzmann" }]
+license = "Apache-2.0"
+requires-python = ">=3.10"
+keywords = ["cli", "terminal", "agent", "llm", "copilot", "bash", "tmux"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: System :: Shells",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Typing :: Typed",
+]
+dependencies = [
+    "ollama>=0.6.0",
+    "python-agent-core>=0.2.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/akatzmann/slash-agent"
+Repository = "https://github.com/akatzmann/slash-agent"
+Issues = "https://github.com/akatzmann/slash-agent/issues"
+Documentation = "https://github.com/akatzmann/slash-agent#readme"
+
+[project.scripts]
+slash-agent = "slash_agent.main:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["slash_agent*"]

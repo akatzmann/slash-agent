@@ -26,6 +26,28 @@
 
 ---
 
+## ⚡ Quick Start
+
+### Recommended: Install via `pipx` or `pip`
+
+```bash
+pipx install slash-agent && slash-agent init --install
+```
+*(Or `pip install slash-agent && slash-agent init --install` in your active Python environment).*
+
+Restart your shell or run `source ~/.bashrc` (or `~/.zshrc`, `~/.config/fish/config.fish`). You can now run `/agent` or `agent` from anywhere in your terminal!
+
+> **Alternative (Zero-Dependency Curl Installer):**  
+> If you prefer a self-contained git clone and virtualenv setup without managing pipx:  
+> ```bash
+> curl -fsSL https://raw.githubusercontent.com/akatzmann/slash-agent/master/bin/installer.sh | bash
+> ```
+
+> **Updating:**  
+> Whenever a new release drops, simply run `/agent --update` (or `/agent --upgrade` / `agent -u`) in your terminal.
+
+---
+
 ### 🔍 The 10-Second Reality Check
 
 | 🟢 What it IS | 🔴 What it IS NOT |
@@ -44,17 +66,12 @@ Unlike web interfaces or proprietary commercial wrappers that silently pipe your
 * **🔐 Bring Your Own Keys (BYOK):** It talks directly to LLM providers via standard API endpoints (OpenAI, Azure OpenAI, etc.). No middleman server intercepts your terminal logs or source code.
 * **🏠 100% Air-Gapped / Offline Capable:** By pointing the backend API configuration to a local Ollama instance or an OpenAI-compatible local server (such as `llama.cpp`, `vLLM`, `SGLang`, or `Xinference`), your terminal history, source code, and error tracebacks never leave your physical machine. See [Configuring Local Providers](docs/documentation.md#5-local-openai-compatible-apis) for detailed instructions.
 
----
+### 🛡️ Best Practices & Responsible Usage
 
-## ⚡ Quick Start (5-Second Install)
-
-Get up and running instantly. Run the quick installer script in your shell (supports Bash, Zsh, Ksh, and Fish):
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/akatzmann/slash-agent/master/bin/installer.sh | bash
-```
-
-*(This automatically clones the repo to `~/.slash-agent`, configures a Python virtual environment, installs requirements, and registers the shell integration in your appropriate shell profile file, e.g. `~/.zshrc`, `~/.bashrc`, `~/.bash_profile`, or `config.fish`.)*
+* **💰 Token Spending & Cost Control:** You provide your own API credentials for cloud models. You are responsible for monitoring token consumption and setting spending limits/quotas in your provider consoles (OpenAI, Azure). For zero cost and zero network egress, use local models via [Ollama](https://ollama.com).
+* **👁️ Interactive Command Verification:** By default, every proposed command pauses for interactive confirmation (`[y]es / [n]o / [e]dit / [c]omment`). Always review proposed shell commands before confirming. Use `e` to tweak arguments inline or `c` to redirect the agent.
+* **⚠️ Unattended Execution Precautions:** The `-y` / `--yes` flag bypasses confirmation prompts. Use unattended flags only in ephemeral containers or safe development environments.
+* **📄 License & Warranty:** Provided "as is" under the Apache-2.0 License. Contributors assume no liability for commands executed or API expenses incurred.
 
 ---
 
@@ -150,9 +167,9 @@ graph TD
 
 ---
 
-## 🔧 Manual Installation
+## 🔧 Development Installation (From Source)
 
-If you prefer to set up the agent manually instead of using the Quick Start script:
+If you are developing on `slash-agent` or prefer building from source:
 
 1. **Clone the Repository:**
    ```bash

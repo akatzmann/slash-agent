@@ -10,6 +10,10 @@ function agent -d "Native LLM Agent Terminal Copilot"
         bash "$_SLASH_AGENT_ROOT/bin/installer.sh" --configure
         return
     end
+    if test "$argv[1]" = "--upgrade" -o "$argv[1]" = "--update" -o "$argv[1]" = "-u"
+        bash "$_SLASH_AGENT_ROOT/bin/installer.sh"
+        return
+    end
 
     set -l CONTEXT_FILE (mktemp -t agent_context.XXXXXX)
     set -l SYNC_FILE (mktemp -t agent_sync.XXXXXX)
