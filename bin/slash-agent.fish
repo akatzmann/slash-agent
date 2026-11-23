@@ -2,7 +2,7 @@
 # Sourcing this file exposes the '/agent' and 'agent' commands.
 
 # Resolve the package root directory relative to this sourced script's location
-set -l _SLASH_AGENT_ROOT (dirname (dirname (status filename)))
+set -g _SLASH_AGENT_ROOT (dirname (dirname (status filename)))
 
 function agent -d "Native LLM Agent Terminal Copilot"
     # 1. Intercept configuration flags instantly
