@@ -1,6 +1,7 @@
 # ⚡ slash-agent: Native LLM Copilot for Your Terminal
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Mentioned in Awesome CLI Coding Agents](https://img.shields.io/badge/Mentioned%20in-Awesome%20CLI%20Coding%20Agents-fc60a8.svg)](https://github.com/bradAGI/awesome-cli-coding-agents)
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-yellow.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Python: 3.10+](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
 [![Shell: Bash](https://img.shields.io/badge/Shell-Bash-green.svg)](https://www.gnu.org/software/bash/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-orange.svg)](http://makeapullrequest.com)
